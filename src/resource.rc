@@ -1,0 +1,752 @@
+// Copyright 2026 LiteProcManager Authors. All rights reserved.
+
+#include <windows.h>
+#include "../include/resource.h"
+
+#pragma code_page(65001)
+
+// Main Application Icon
+IDI_APP_ICON       ICON "app.ico"
+
+// Toolbar Icons
+IDI_TB_TREE        ICON "icons/tree.ico"
+IDI_TB_LIST        ICON "icons/list.ico"
+IDI_TB_COLUMNS     ICON "icons/columns.ico"
+IDI_TB_SHIELD      ICON "icons/shield.ico"
+IDI_TB_TOPMOST     ICON "icons/topmost.ico"
+IDI_TB_TOPMOST_OFF ICON "icons/topmost_off.ico"
+IDI_TB_OPTIONS     ICON "icons/options.ico"
+IDI_TB_MONITOR     ICON "icons/monitor.ico"
+IDI_TB_REFRESH     ICON "icons/refresh.ico"
+IDI_TB_ENDTASK     ICON "icons/endtask.ico"
+
+#ifdef APSTUDIO_INVOKED
+1 TEXTINCLUDE 
+BEGIN
+    "../include/resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include <windows.h>\r\n"
+    "#include ""../include/resource.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+#endif    // APSTUDIO_INVOKED
+
+// ========================================================
+// Dialogs
+// ========================================================
+
+IDD_OPTIONS_DIALOG DIALOGEX 0, 0, 275, 250
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "ユーザー設定"
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "表示言語:",IDC_OPT_LBL_LANG,14,14,75,10
+    COMBOBOX        IDC_OPT_COMBO_LANG,95,12,110,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "リスト表示フォント:",IDC_OPT_LBL_LIST_FONT,14,34,75,10
+    LTEXT           "",IDC_OPT_LBL_LIST_FONT_VAL,95,34,105,10,SS_LEFTNOWORDWRAP
+    PUSHBUTTON      "変更...",IDC_OPT_BTN_LIST_FONT,208,32,52,14
+    LTEXT           "UI / メニューフォント:",IDC_OPT_LBL_UI_FONT,14,54,75,10
+    LTEXT           "",IDC_OPT_LBL_UI_FONT_VAL,95,54,105,10,SS_LEFTNOWORDWRAP
+    PUSHBUTTON      "変更...",IDC_OPT_BTN_UI_FONT,208,52,52,14
+    LTEXT           "更新頻度:",IDC_OPT_LBL_INTERVAL,14,74,75,10
+    CONTROL         "",IDC_OPT_SLIDER_INTERVAL,"msctls_trackbar32",TBS_AUTOTICKS | TBS_HORZ | WS_TABSTOP,95,70,110,18
+    LTEXT           "",IDC_OPT_LBL_INTERVAL_VAL,210,74,52,10
+    CONTROL         "常に手前に表示",IDC_OPT_CHK_ALWAYS_TOP,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,96,245,10
+    CONTROL         "最小化時にタスクトレイに格納",IDC_OPT_CHK_TRAY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,112,245,10
+    LTEXT           "除外対象プロセス:",IDC_OPT_LBL_EXCLUDED,14,136,186,10
+    CONTROL         "",IDC_OPT_LIST_EXCLUDED,"SysListView32",LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,14,148,186,56
+    PUSHBUTTON      "追加(&A)...",IDC_OPT_BTN_ADD_EXCLUDED,208,148,52,14
+    PUSHBUTTON      "削除(&D)",IDC_OPT_BTN_DEL_EXCLUDED,208,166,52,14
+    DEFPUSHBUTTON   "OK",IDOK,155,224,52,16
+    PUSHBUTTON      "キャンセル",IDCANCEL,212,224,52,16
+END
+
+IDD_ADD_EXCLUDED_DIALOG DIALOGEX 0, 0, 210, 75
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "除外プロセスの追加"
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "除外するプロセス名:",IDC_ADD_EXCL_PROMPT,12,12,186,10
+    EDITTEXT        IDC_ADD_EXCL_EDIT,12,24,186,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK",IDOK,96,48,50,14
+    PUSHBUTTON      "キャンセル",IDCANCEL,148,48,50,14
+END
+
+IDD_COLUMN_SELECTOR_DIALOG DIALOGEX 0, 0, 310, 250
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "列の選択"
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "プロセス一覧に表示する列を選択してください:",IDC_COL_INSTRUCTION,12,10,285,10
+    CONTROL         "",IDC_COL_LIST,"SysListView32",LVS_REPORT | LVS_NOCOLUMNHEADER | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP,12,24,210,185
+    PUSHBUTTON      "上へ移動(&U)",IDC_COL_BTN_MOVE_UP,230,24,68,16
+    PUSHBUTTON      "下へ移動(&D)",IDC_COL_BTN_MOVE_DOWN,230,46,68,16
+    PUSHBUTTON      "すべて選択(&A)",IDC_COL_BTN_SELECT_ALL,230,74,68,16
+    PUSHBUTTON      "既定値に戻す(&R)",IDC_COL_BTN_DEFAULT,230,96,68,16
+    DEFPUSHBUTTON   "OK",IDOK,190,222,52,16
+    PUSHBUTTON      "キャンセル",IDCANCEL,246,222,52,16
+END
+
+IDD_MONITOR_DIALOG DIALOGEX 0, 0, 380, 220
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "プロセス監視ルール"
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "",IDC_MONITOR_LIST,"SysListView32",LVS_REPORT | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP,10,12,290,165
+    PUSHBUTTON      "新規追加(&N)...",IDC_MONITOR_BTN_ADD,308,12,62,16
+    PUSHBUTTON      "編集(&E)...",IDC_MONITOR_BTN_EDIT,308,32,62,16
+    PUSHBUTTON      "削除(&D)",IDC_MONITOR_BTN_DELETE,308,52,62,16
+    PUSHBUTTON      "有効/無効(&T)",IDC_MONITOR_BTN_TOGGLE,308,77,62,16
+    PUSHBUTTON      "テスト(警告)",IDC_MONITOR_BTN_TEST_WARN,308,102,62,16
+    PUSHBUTTON      "テスト(重大)",IDC_MONITOR_BTN_TEST_ERR,308,122,62,16
+    DEFPUSHBUTTON   "閉じる",IDOK,308,192,62,16
+END
+
+IDD_RULE_EDIT_DIALOG DIALOGEX 0, 0, 280, 184
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "ルール編集"
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "ルール名:",IDC_RULE_LBL_NAME,12,14,55,10
+    EDITTEXT        IDC_RULE_EDIT_NAME,72,12,192,14,ES_AUTOHSCROLL
+    LTEXT           "監視対象:",IDC_RULE_LBL_TARGET,12,34,55,10
+    COMBOBOX        IDC_RULE_COMBO_TARGET,72,32,88,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_RULE_COMBO_MATCH,165,32,99,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "パターン:",IDC_RULE_LBL_PATTERN,12,54,55,10
+    EDITTEXT        IDC_RULE_EDIT_PATTERN,72,52,192,14,ES_AUTOHSCROLL
+    CONTROL         "対象プロセスが存在しない場合に通知",IDC_RULE_CHK_NOT_FOUND,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,72,70,192,12
+    LTEXT           "重要度:",IDC_RULE_LBL_LEVEL,12,88,55,10
+    COMBOBOX        IDC_RULE_COMBO_LEVEL,72,86,88,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "発火条件:",IDC_RULE_LBL_CONDITION,12,108,55,10
+    COMBOBOX        IDC_RULE_COMBO_COL,72,106,100,140,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_RULE_COMBO_OP,176,106,34,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    EDITTEXT        IDC_RULE_EDIT_VALUE,214,106,50,14,ES_AUTOHSCROLL
+    LTEXT           "通知間隔:",IDC_RULE_LBL_COOLDOWN,12,130,55,10
+    CONTROL         "",IDC_RULE_SLIDER_COOLDOWN,"msctls_trackbar32",TBS_AUTOTICKS | TBS_HORZ | WS_TABSTOP,72,126,135,18
+    LTEXT           "",IDC_RULE_LBL_COOLDOWN_VAL,212,130,52,10
+    DEFPUSHBUTTON   "保存",IDOK,160,158,50,16
+    PUSHBUTTON      "キャンセル",IDCANCEL,215,158,50,16
+END
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO
+BEGIN
+    IDD_OPTIONS_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 268
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 198
+    END
+    IDD_COLUMN_SELECTOR_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 303
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 243
+    END
+    IDD_MONITOR_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 373
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 213
+    END
+    IDD_RULE_EDIT_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 273
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 208
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+// ========================================================
+// Japanese (日本語) Resources
+// ========================================================
+LANGUAGE LANG_JAPANESE, SUBLANG_DEFAULT
+
+STRINGTABLE
+BEGIN
+    IDS_APP_TITLE                  "LiteProcManager"
+    IDS_SEARCH_PLACEHOLDER         " 🔍 プロセス名・PID・説明で検索..."
+    IDS_LABEL_SEARCH               "🔍 検索:"
+    IDS_LABEL_INTERVAL             "更新頻度:"
+    IDS_INTERVAL_PAUSE             "一時停止"
+    IDS_STATUS_PROCESSES           "プロセス: %u"
+    IDS_STATUS_THREADS             "スレッド: %u"
+    IDS_STATUS_HANDLES             "ハンドル: %u"
+    IDS_STATUS_CPU                 "CPU使用率: %.1f%%"
+    IDS_STATUS_MEMORY              "物理メモリ: %.1f / %.1f GB (%d%%)"
+    IDS_STATUS_COMMIT              "コミット: %.1f / %.1f GB"
+
+    // Menus
+    IDS_MENU_FILE                  "ファイル(&F)"
+    IDS_MENU_VIEW                  "表示(&V)"
+    IDS_MENU_OPTIONS               "ユーザー設定(&O)..."
+    IDS_MENU_MONITOR_RULES         "プロセス監視ルール(&M)..."
+    IDS_MENU_SELECT_COLUMNS        "列の選択(&C)..."
+    IDS_MENU_ALWAYS_ON_TOP         "常に手前に表示(&A)"
+    IDS_MENU_TOGGLE_THEME          "ダークモード切替(&T)"
+    IDS_MENU_EXIT                  "終了(&X)"
+    IDS_MENU_OPEN                  "開く(&O)"
+    IDS_MENU_REFRESH_NOW           "最新の情報に更新(&R)\tF5"
+    IDS_MENU_END_PROCESS           "プロセスの終了(&E)\tDel"
+    IDS_MENU_OPEN_LOCATION         "ファイルの場所を開く(&L)"
+    IDS_MENU_ONLINE_SEARCH         "オンラインで検索(&S)"
+    IDS_MENU_PROPERTIES            "プロパティ(&R)"
+    IDS_MENU_SET_PRIORITY          "優先度の設定(&P)"
+    IDS_MENU_COPY                  "コピー(&C)"
+    IDS_MENU_COPY_CMD              "コマンドライン"
+    IDS_MENU_COPY_PATH             "実行ファイル パス"
+    IDS_MENU_COPY_JSON             "クリップボードへコピー (JSON)(&J)"
+    IDS_MENU_COPY_TSV              "クリップボードへコピー (TSV)(&T)"
+    IDS_MENU_END_TREE              "プロセスツリーを終了(&T)"
+    IDS_MENU_RESTART_AS_ADMIN      "管理者として再起動(&A)"
+    IDS_MENU_HELP                  "ヘルプ(&H)"
+    IDS_MENU_ABOUT                 "バージョン情報(&A)..."
+    IDS_ABOUT_TITLE                "バージョン情報"
+    IDS_ABOUT_APP_NAME             "LiteProcManager"
+
+    // Tooltips
+    IDS_TOOLTIP_THEME_LIGHT        "ライトモードに切り替え"
+    IDS_TOOLTIP_THEME_DARK         "ダークモードに切り替え"
+    IDS_TOOLTIP_REFRESH            "最新の情報に更新"
+    IDS_TOOLTIP_OPTIONS            "ユーザー設定を開く"
+    IDS_TOOLTIP_MONITOR            "プロセス監視ルール設定を開く"
+    IDS_TOOLTIP_COLUMNS            "表示する列を選択"
+    IDS_TOOLTIP_ALWAYS_ON_TOP      "最前面表示の切替"
+    IDS_TOOLTIP_VIEW_TREE          "ツリー表示に切り替え"
+    IDS_TOOLTIP_VIEW_LIST          "リスト表示に切り替え"
+    IDS_TOOLTIP_TOPMOST_OFF        "最前面表示を解除"
+    IDS_TOOLTIP_TOPMOST_ON         "常に手前に表示"
+    IDS_TOOLTIP_END_PROCESS        "プロセスの終了 (Delete)"
+    IDS_TOOLTIP_QUICK_FILTER       "クイックフィルター"
+    IDS_TOOLTIP_INTERVAL           "更新頻度"
+    IDS_TOOLTIP_RESTART_ADMIN      "管理者として再起動"
+    IDS_TOOLTIP_RUNNING_AS_ADMIN   "管理者権限で実行中"
+
+    // Dialog Common
+    IDS_BTN_OK                     "OK"
+    IDS_BTN_CANCEL                 "キャンセル"
+    IDS_BTN_SAVE                   "保存"
+    IDS_BTN_ADD                    "追加"
+    IDS_BTN_EDIT                   "編集..."
+    IDS_BTN_DELETE                 "削除"
+    IDS_BTN_REMOVE                 "削除"
+    IDS_BTN_TOGGLE                 "有効/無効"
+    IDS_BTN_MOVE_UP                "上へ"
+    IDS_BTN_MOVE_DOWN              "下へ"
+    IDS_BTN_DEFAULT                "デフォルト"
+    IDS_BTN_TEST_WARN              "⚠️ 警告テスト"
+    IDS_BTN_TEST_ERR               "⛔ 異常テスト"
+    IDS_CONFIRM_DELETE             "ルール「%s」を削除しますか？"
+    IDS_CONFIRM_DELETE_MULTIPLE    "選択された %d 件のルールを削除しますか？"
+    IDS_CONFIRM_RESTART_THEME      "カラーテーマの変更を適用するにはアプリケーションの再起動が必要です。\n今すぐ再起動しますか？"
+    IDS_RESTART_NOTICE_TITLE       "再起動の確認"
+    IDS_CONFIRM_EXIT               "LiteProcManagerを終了しますか？"
+
+    // Options Dialog
+    IDS_DLG_OPTIONS_TITLE          "ユーザー設定"
+    IDS_LABEL_LANGUAGE             "表示言語:"
+    IDS_LABEL_THEME                "カラーテーマ:"
+    IDS_LABEL_LIST_FONT            "リスト表示フォント:"
+    IDS_LABEL_UI_FONT              "UI・メニュー用フォント:"
+    IDS_LABEL_FONT                 "フォント設定:"
+    IDS_BTN_CHANGE_FONT            "変更..."
+    IDS_LABEL_REFRESH_INTERVAL     "更新間隔 (秒):"
+    IDS_LABEL_ALWAYS_ON_TOP        "常に最前面に表示する"
+    IDS_LABEL_MINIMIZE_TO_TRAY     "最小化時にタスクトレイに格納する"
+    IDS_LABEL_AUTO_START           "Windows 起動時に自動起動する(&A)"
+    IDS_LANG_AUTO                  "自動判定 (システム言語)"
+    IDS_LANG_JAPANESE              "日本語 (Japanese)"
+    IDS_LANG_ENGLISH               "英語 (English)"
+    IDS_THEME_LIGHT                "ライト (Light)"
+    IDS_THEME_DARK                 "ダーク (Dark)"
+    IDS_SECONDS_UNIT               "秒"
+    IDS_LABEL_EXCLUDED_PROCESSES   "除外対象プロセス:"
+    IDS_DLG_ADD_EXCLUDED_TITLE     "除外プロセスの追加"
+    IDS_LABEL_ADD_EXCLUDED_PROMPT  "除外するプロセス名:"
+
+    // Monitor Dialog
+    IDS_DLG_MONITOR_TITLE          "プロセス監視ルールの設定"
+    IDS_COL_STATUS                 "状態"
+    IDS_COL_RULE_NAME              "ルール名"
+    IDS_COL_LEVEL                  "レベル"
+    IDS_COL_TARGET                 "監視対象"
+    IDS_COL_CONDITION              "検知条件"
+    IDS_STATUS_ENABLED             "有効"
+    IDS_STATUS_DISABLED            "無効"
+    IDS_LEVEL_WARNING              "警告"
+    IDS_LEVEL_CRITICAL             "異常"
+    IDS_MATCH_EXACT                "完全一致"
+    IDS_MATCH_CONTAINS             "部分一致"
+    IDS_MATCH_STARTS_WITH          "前方一致"
+    IDS_MATCH_ENDS_WITH            "後方一致"
+    IDS_MATCH_TARGET_PROCESS_NAME  "プロセス名"
+    IDS_MATCH_TARGET_PID           "PID"
+    IDS_RULE_EDIT_TITLE_ADD        "監視ルールの追加"
+    IDS_RULE_EDIT_TITLE_EDIT       "監視ルールの編集"
+    IDS_RULE_NAME_LABEL            "ルール名:"
+    IDS_TARGET_TYPE_LABEL          "対象種別:"
+    IDS_MATCH_TYPE_LABEL           "一致条件:"
+    IDS_PATTERN_LABEL              "対象パターン:"
+    IDS_CONDITION_LABEL            "判定条件:"
+    IDS_COOLDOWN_LABEL             "通知間隔 (秒):"
+    IDS_UNIT_SECONDS_COOLDOWN      "秒 (0で制限なし)"
+    IDS_LOGIC_AND                  "すべての条件を満たす (AND)"
+    IDS_LOGIC_OR                   "いずれかの条件を満たす (OR)"
+    IDS_LABEL_RULE_NAME            "ルール名:"
+    IDS_LABEL_TARGET               "監視対象:"
+    IDS_LABEL_LEVEL                "レベル:"
+    IDS_LABEL_LOGIC                "複合条件ロジック:"
+    IDS_OP_CONTAINS                "含む"
+    IDS_ITEM_DEFAULT               "既定"
+    IDS_MSG_RULE_NAME_EMPTY        "ルール名を入力してください。"
+    IDS_MSG_PATTERN_EMPTY          "対象パターンを入力してください。"
+    IDS_MSG_SELECT_RULE_TO_EDIT    "編集するルールを選択してください。"
+    IDS_MSG_SELECT_RULE_TO_DELETE  "削除するルールを選択してください。"
+    IDS_MSG_SELECT_RULE_TO_TOGGLE  "切り替えるルールを選択してください。"
+    IDS_LABEL_NOTIFY_IF_NOT_FOUND  "対象が存在しない場合に通知"
+    IDS_MSG_PROCESS_NOT_FOUND      "対象プロセスが存在しません (停止中)"
+
+    // Column Selector Dialog
+    IDS_DLG_COL_SELECTOR_TITLE     "表示する列の選択"
+    IDS_SELECT_COLUMNS_INSTRUCTION "プロセス一覧に表示する列を選択してください:"
+    IDS_BTN_SELECT_ALL             "すべて選択"
+    IDS_BTN_DESELECT_ALL           "選択解除"
+
+    // Priority Names
+    IDS_PRIORITY_REALTIME          "リアルタイム"
+    IDS_PRIORITY_HIGH              "高"
+    IDS_PRIORITY_ABOVE_NORMAL      "通常以上"
+    IDS_PRIORITY_NORMAL            "通常"
+    IDS_PRIORITY_BELOW_NORMAL      "通常以下"
+    IDS_PRIORITY_LOW               "低"
+
+    // Process Details & Snapshot Status
+    IDS_STATUS_RUNNING             "実行中"
+    IDS_STATUS_SUSPENDED           "一時停止"
+    IDS_YES                        "はい"
+    IDS_NO                         "いいえ"
+    IDS_ENABLED                    "有効"
+    IDS_DISABLED                   "無効"
+    IDS_ENABLED_PERMANENT          "有効 (永続的)"
+    IDS_NOT_APPLICABLE             "該当なし"
+    IDS_PLATFORM_32BIT             "32ビット"
+    IDS_PLATFORM_64BIT             "64ビット"
+    IDS_PROPERTIES_TITLE_PREFIX    "プロパティ - "
+    IDS_PROPERTIES_HEADER          "【プロセス詳細情報】\n"
+    IDS_PROP_IMAGE_NAME            "イメージ名: "
+    IDS_PROP_PID                   "PID: "
+    IDS_PROP_PARENT_PID            " (親PID: "
+    IDS_PROP_STATUS                "状態: "
+    IDS_PROP_USER                  "ユーザー: "
+    IDS_PROP_DESCRIPTION           "説明: "
+    IDS_PROP_ARCHITECTURE          "アーキテクチャ: "
+    IDS_PROP_PRIORITY              "優先度: "
+    IDS_PROP_THREADS               "スレッド数: "
+    IDS_PROP_HANDLES               "ハンドル数: "
+    IDS_PROP_CPU                   "CPU使用率: "
+    IDS_PROP_WORKING_SET           "ワーキングセット: "
+    IDS_PROP_COMMIT                "コミットサイズ: "
+    IDS_PROP_START_TIME            "開始時刻: "
+    IDS_PROP_FILE_PATH             "ファイルパス: "
+
+    // Message Boxes & Prompts
+    IDS_MSG_CONFIRM_END_PROCESS    "プロセス '%s' (PID: %u) を終了しますか？\n\n警告: プロセスを終了すると、データが失われたりシステムが不安定になる可能性があります。"
+    IDS_MSG_CONFIRM_END_PROCESS_MULTIPLE "選択された %zu 個のプロセスを終了しますか？\n\n警告: プロセスを終了すると、データが失われたりシステムが不安定になる可能性があります。"
+    IDS_TITLE_CONFIRM_END_PROCESS  "プロセスの終了の確認"
+    IDS_MSG_END_PROCESS_ERROR      "プロセスを終了できませんでした。管理者権限が必要か、保護されたプロセスである可能性があります。"
+    IDS_TITLE_ERROR                "エラー"
+    IDS_MSG_CONFIRM_END_TREE       "プロセス '%s' (PID: %u) およびすべての子プロセス（プロセスツリー全体）を終了しますか？"
+    IDS_TITLE_CONFIRM_END_TREE     "プロセス ツリーの終了の確認"
+    IDS_MSG_END_TREE_PARTIAL       "一部のプロセスを終了できませんでした。"
+    IDS_TITLE_NOTICE               "通知"
+    IDS_TITLE_INFO                 "情報"
+    IDS_MSG_WARN_REALTIME          "優先度クラスをリアルタイムに変更すると、オペレーティング システムの安定性に影響を与える可能性があります。続行しますか？"
+    IDS_TITLE_CHANGE_PRIORITY      "優先度の変更"
+    IDS_MSG_CHANGE_PRIORITY_ERROR  "優先度を変更できませんでした。アクセスが拒否されました。"
+    IDS_MSG_ACCESS_DENIED          "アクセスが拒否されました。"
+    IDS_MSG_FILE_NOT_FOUND         "実行ファイルのパスが見つかりません。"
+    IDS_MSG_REALTIME_WARNING       "優先度クラスをリアルタイムに変更すると、OSの安定性に影響を与える可能性があります。続行しますか？"
+    IDS_MSG_TRAY_MINIMIZED         "タスクトレイに最小化されました。ダブルクリックで復元します。"
+    IDS_MSG_ERROR                  "エラー"
+    IDS_MSG_INFO                   "情報"
+    IDS_MSG_WARNING                "警告"
+
+    // Process Columns Header Names (41 Columns)
+    IDS_COL_HDR_NAME               "名前"
+    IDS_COL_HDR_PID                "PID"
+    IDS_COL_HDR_STATUS             "状態"
+    IDS_COL_HDR_USER_NAME          "ユーザー名"
+    IDS_COL_HDR_CPU                "CPU"
+    IDS_COL_HDR_WORKING_SET        "メモリ (ワーキングセット)"
+    IDS_COL_HDR_PRIVATE_WS         "プライベート ワーキングセット"
+    IDS_COL_HDR_PEAK_WS            "ピーク ワーキングセット"
+    IDS_COL_HDR_WS_DELTA           "ワーキングセット デルタ"
+    IDS_COL_HDR_COMMIT_SIZE        "コミット サイズ"
+    IDS_COL_HDR_PAGED_POOL         "ページ プール"
+    IDS_COL_HDR_NON_PAGED_POOL     "非ページ プール"
+    IDS_COL_HDR_THREADS            "スレッド"
+    IDS_COL_HDR_HANDLES            "ハンドル"
+    IDS_COL_HDR_BASE_PRIORITY      "基本優先度"
+    IDS_COL_HDR_DESCRIPTION        "説明"
+    IDS_COL_HDR_OS_CONTEXT         "OS コンテキスト"
+    IDS_COL_HDR_FILE_PATH          "イメージのファイル パス"
+    IDS_COL_HDR_COMMAND_LINE       "コマンド ライン"
+    IDS_COL_HDR_USER_OBJECTS       "USER オブジェクト"
+    IDS_COL_HDR_GDI_OBJECTS        "GDI オブジェクト"
+    IDS_COL_HDR_IO_READ_COUNT      "I/O 読み込み"
+    IDS_COL_HDR_IO_READ_BYTES      "I/O 読み込みバイト"
+    IDS_COL_HDR_IO_WRITE_COUNT     "I/O 書き込み"
+    IDS_COL_HDR_IO_WRITE_BYTES     "I/O 書き込みバイト"
+    IDS_COL_HDR_IO_OTHER_COUNT     "I/O その他"
+    IDS_COL_HDR_IO_OTHER_BYTES     "I/O その他バイト"
+    IDS_COL_HDR_ELEVATED           "昇格"
+    IDS_COL_HDR_UAC_VIRTUALIZATION "UAC 仮想化"
+    IDS_COL_HDR_DEP_STATUS         "データ実行防止 (DEP)"
+    IDS_COL_HDR_ENTERPRISE_CONTEXT "エンタープライズ コンテキスト"
+    IDS_COL_HDR_DPI_AWARENESS      "DPI 認識"
+    IDS_COL_HDR_PACKAGE_NAME       "パッケージ名"
+    IDS_COL_HDR_ARCHITECTURE       "プラットフォーム"
+    IDS_COL_HDR_PLATFORM           "プラットフォーム"
+    IDS_COL_HDR_GPU_USAGE          "GPU"
+    IDS_COL_HDR_GPU_ENGINE         "GPU エンジン"
+    IDS_COL_HDR_DEDICATED_GPU_MEM  "専用 GPU メモリ"
+    IDS_COL_HDR_SHARED_GPU_MEM     "共有 GPU メモリ"
+    IDS_COL_HDR_SESSION_ID         "セッション ID"
+    IDS_COL_HDR_CREATE_TIME        "開始時刻"
+
+    // Services Management
+    IDS_TAB_PROCESSES              "プロセス"
+    IDS_TAB_SERVICES               "サービス"
+    IDS_SVC_COL_NAME               "名前"
+    IDS_SVC_COL_DISPLAY_NAME       "表示名"
+    IDS_SVC_COL_PID                "PID"
+    IDS_SVC_COL_STATE              "状態"
+    IDS_SVC_COL_START_TYPE         "スタートアップの種類"
+    IDS_SVC_COL_ACCOUNT            "ログオン"
+    IDS_SVC_COL_DESCRIPTION        "説明"
+    IDS_SVC_STATE_RUNNING          "実行中"
+    IDS_SVC_STATE_STOPPED          "停止"
+    IDS_SVC_STATE_START_PENDING    "開始処理中"
+    IDS_SVC_STATE_STOP_PENDING     "停止処理中"
+    IDS_SVC_STATE_PAUSED           "一時停止"
+    IDS_SVC_STATE_PAUSE_PENDING    "一時停止処理中"
+    IDS_SVC_STATE_CONTINUE_PENDING "再開処理中"
+    IDS_SVC_STATE_UNKNOWN          "不明"
+    IDS_SVC_START_TYPE_AUTO        "自動"
+    IDS_SVC_START_TYPE_MANUAL      "手動"
+    IDS_SVC_START_TYPE_DISABLED    "無効"
+    IDS_SVC_START_TYPE_BOOT        "ブート"
+    IDS_SVC_START_TYPE_SYSTEM      "システム"
+    IDS_SVC_START_TYPE_UNKNOWN     "不明"
+    IDS_MENU_SERVICE_START         "開始(&S)"
+    IDS_MENU_SERVICE_STOP          "停止(&T)"
+    IDS_MENU_SERVICE_RESTART       "再起動(&R)"
+    IDS_MENU_SERVICE_STARTUP       "スタートアップの種類(&U)"
+    IDS_MENU_SERVICE_GO_TO_PROCESS "プロセスに移動(&P)"
+    IDS_MENU_PROCESS_GO_TO_SERVICE "関連サービスに移動(&S)"
+    IDS_STATUS_SERVICE_COUNTS      "サービス: (%u/%u)"
+END
+
+// ========================================================
+// English (US) Resources
+// ========================================================
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+STRINGTABLE
+BEGIN
+    IDS_APP_TITLE                  "LiteProcManager"
+    IDS_SEARCH_PLACEHOLDER         " 🔍 Search process, PID, description..."
+    IDS_LABEL_SEARCH               "🔍 Search:"
+    IDS_LABEL_INTERVAL             "Interval:"
+    IDS_INTERVAL_PAUSE             "Pause"
+    IDS_STATUS_PROCESSES           "Processes: %u"
+    IDS_STATUS_THREADS             "Threads: %u"
+    IDS_STATUS_HANDLES             "Handles: %u"
+    IDS_STATUS_CPU                 "CPU Usage: %.1f%%"
+    IDS_STATUS_MEMORY              "Physical Memory: %.1f / %.1f GB (%d%%)"
+    IDS_STATUS_COMMIT              "Commit: %.1f / %.1f GB"
+
+    // Menus
+    IDS_MENU_FILE                  "&File"
+    IDS_MENU_VIEW                  "&View"
+    IDS_MENU_OPTIONS               "User &Options..."
+    IDS_MENU_MONITOR_RULES         "Process &Monitor Rules..."
+    IDS_MENU_SELECT_COLUMNS        "Select &Columns..."
+    IDS_MENU_ALWAYS_ON_TOP         "&Always on Top"
+    IDS_MENU_TOGGLE_THEME          "Toggle Dark &Theme"
+    IDS_MENU_EXIT                  "E&xit"
+    IDS_MENU_OPEN                  "&Open"
+    IDS_MENU_REFRESH_NOW           "&Refresh Now\tF5"
+    IDS_MENU_END_PROCESS           "&End Process\tDel"
+    IDS_MENU_OPEN_LOCATION         "Open File &Location"
+    IDS_MENU_ONLINE_SEARCH         "&Search Online"
+    IDS_MENU_PROPERTIES            "P&roperties"
+    IDS_MENU_SET_PRIORITY          "Set &Priority"
+    IDS_MENU_COPY                  "&Copy"
+    IDS_MENU_COPY_CMD              "Command Line"
+    IDS_MENU_COPY_PATH             "File Path"
+    IDS_MENU_COPY_JSON             "Copy to Clipboard (&JSON)"
+    IDS_MENU_COPY_TSV              "Copy to Clipboard (&TSV)"
+    IDS_MENU_END_TREE              "End Process &Tree"
+    IDS_MENU_RESTART_AS_ADMIN      "Restart as &Administrator"
+    IDS_MENU_HELP                  "&Help"
+    IDS_MENU_ABOUT                 "&About LiteProcManager..."
+    IDS_ABOUT_TITLE                "About LiteProcManager"
+    IDS_ABOUT_APP_NAME             "LiteProcManager"
+
+    // Tooltips
+    IDS_TOOLTIP_THEME_LIGHT        "Switch to Light Mode"
+    IDS_TOOLTIP_THEME_DARK         "Switch to Dark Mode"
+    IDS_TOOLTIP_REFRESH            "Refresh Data"
+    IDS_TOOLTIP_OPTIONS            "Open Options Settings"
+    IDS_TOOLTIP_MONITOR            "Open Process Monitor Rules"
+    IDS_TOOLTIP_COLUMNS            "Select Display Columns"
+    IDS_TOOLTIP_ALWAYS_ON_TOP      "Toggle Always on Top"
+    IDS_TOOLTIP_VIEW_TREE          "Switch to Tree View"
+    IDS_TOOLTIP_VIEW_LIST          "Switch to List View"
+    IDS_TOOLTIP_TOPMOST_OFF        "Disable Always on Top"
+    IDS_TOOLTIP_TOPMOST_ON         "Enable Always on Top"
+    IDS_TOOLTIP_END_PROCESS        "End Process (Delete)"
+    IDS_TOOLTIP_QUICK_FILTER       "Quick Filter"
+    IDS_TOOLTIP_INTERVAL           "Refresh Interval"
+    IDS_TOOLTIP_RESTART_ADMIN      "Restart as Administrator"
+    IDS_TOOLTIP_RUNNING_AS_ADMIN   "Running as Administrator"
+
+    // Dialog Common
+    IDS_BTN_OK                     "OK"
+    IDS_BTN_CANCEL                 "Cancel"
+    IDS_BTN_SAVE                   "Save"
+    IDS_BTN_ADD                    "Add"
+    IDS_BTN_EDIT                   "Edit..."
+    IDS_BTN_DELETE                 "Remove"
+    IDS_BTN_REMOVE                 "Remove"
+    IDS_BTN_TOGGLE                 "Enable/Disable"
+    IDS_BTN_MOVE_UP                "Move Up"
+    IDS_BTN_MOVE_DOWN              "Move Down"
+    IDS_BTN_DEFAULT                "Default"
+    IDS_BTN_TEST_WARN              "⚠️ Test Warning"
+    IDS_BTN_TEST_ERR               "⛔ Test Critical"
+    IDS_CONFIRM_DELETE             "Are you sure you want to remove rule '%s'?"
+    IDS_CONFIRM_DELETE_MULTIPLE    "Are you sure you want to remove %d selected rules?"
+    IDS_CONFIRM_RESTART_THEME      "The application needs to restart to apply the color theme change.\nDo you want to restart now?"
+    IDS_RESTART_NOTICE_TITLE       "Restart Required"
+    IDS_CONFIRM_EXIT               "Do you want to exit LiteProcManager?"
+
+    // Options Dialog
+    IDS_DLG_OPTIONS_TITLE          "User Options"
+    IDS_LABEL_LANGUAGE             "Language:"
+    IDS_LABEL_THEME                "Color Theme:"
+    IDS_LABEL_LIST_FONT            "Process List Font:"
+    IDS_LABEL_UI_FONT              "UI & Menu Font:"
+    IDS_LABEL_FONT                 "Font Settings:"
+    IDS_BTN_CHANGE_FONT            "Change..."
+    IDS_LABEL_REFRESH_INTERVAL     "Refresh Interval (sec):"
+    IDS_LABEL_ALWAYS_ON_TOP        "Always on Top"
+    IDS_LABEL_MINIMIZE_TO_TRAY     "Minimize to System Tray"
+    IDS_LABEL_AUTO_START           "Start automatically with Windows(&A)"
+    IDS_LANG_AUTO                  "Auto Detect (System)"
+    IDS_LANG_JAPANESE              "Japanese"
+    IDS_LANG_ENGLISH               "English"
+    IDS_THEME_LIGHT                "Light"
+    IDS_THEME_DARK                 "Dark"
+    IDS_SECONDS_UNIT               "sec"
+    IDS_LABEL_EXCLUDED_PROCESSES   "Excluded Processes:"
+    IDS_DLG_ADD_EXCLUDED_TITLE     "Add Excluded Process"
+    IDS_LABEL_ADD_EXCLUDED_PROMPT  "Process name to exclude:"
+
+    // Monitor Dialog
+    IDS_DLG_MONITOR_TITLE          "Process Monitor Rules"
+    IDS_COL_STATUS                 "Status"
+    IDS_COL_RULE_NAME              "Rule Name"
+    IDS_COL_LEVEL                  "Level"
+    IDS_COL_TARGET                 "Target"
+    IDS_COL_CONDITION              "Condition"
+    IDS_STATUS_ENABLED             "Enabled"
+    IDS_STATUS_DISABLED            "Disabled"
+    IDS_LEVEL_WARNING              "Warning"
+    IDS_LEVEL_CRITICAL             "Critical"
+    IDS_MATCH_EXACT                "Exact Match"
+    IDS_MATCH_CONTAINS             "Contains"
+    IDS_MATCH_STARTS_WITH          "Starts With"
+    IDS_MATCH_ENDS_WITH            "Ends With"
+    IDS_MATCH_TARGET_PROCESS_NAME  "Process Name"
+    IDS_MATCH_TARGET_PID           "PID"
+    IDS_RULE_EDIT_TITLE_ADD        "Add Monitor Rule"
+    IDS_RULE_EDIT_TITLE_EDIT       "Edit Monitor Rule"
+    IDS_RULE_NAME_LABEL            "Rule Name:"
+    IDS_TARGET_TYPE_LABEL          "Target Type:"
+    IDS_MATCH_TYPE_LABEL           "Match Type:"
+    IDS_PATTERN_LABEL              "Pattern:"
+    IDS_CONDITION_LABEL            "Condition:"
+    IDS_COOLDOWN_LABEL             "Notification Cooldown (sec):"
+    IDS_UNIT_SECONDS_COOLDOWN      "sec (0 for unrestricted)"
+    IDS_LOGIC_AND                  "All conditions must match (AND)"
+    IDS_LOGIC_OR                   "Any condition may match (OR)"
+    IDS_LABEL_RULE_NAME            "Rule Name:"
+    IDS_LABEL_TARGET               "Target Process:"
+    IDS_LABEL_LEVEL                "Notification Level:"
+    IDS_LABEL_LOGIC                "Compound Condition Logic:"
+    IDS_OP_CONTAINS                "Contains"
+    IDS_ITEM_DEFAULT               "Default"
+    IDS_MSG_RULE_NAME_EMPTY        "Please enter a rule name."
+    IDS_MSG_PATTERN_EMPTY          "Please enter a target pattern."
+    IDS_MSG_SELECT_RULE_TO_EDIT    "Please select a rule to edit."
+    IDS_MSG_SELECT_RULE_TO_DELETE  "Please select a rule to remove."
+    IDS_MSG_SELECT_RULE_TO_TOGGLE  "Please select a rule to toggle."
+    IDS_LABEL_NOTIFY_IF_NOT_FOUND  "Notify if target process not found"
+    IDS_MSG_PROCESS_NOT_FOUND      "Target process not found (stopped)"
+
+    // Column Selector Dialog
+    IDS_DLG_COL_SELECTOR_TITLE     "Select Columns"
+    IDS_SELECT_COLUMNS_INSTRUCTION "Select columns to display in process list:"
+    IDS_BTN_SELECT_ALL             "Select All"
+    IDS_BTN_DESELECT_ALL           "Deselect All"
+
+    // Priority Names
+    IDS_PRIORITY_REALTIME          "Realtime"
+    IDS_PRIORITY_HIGH              "High"
+    IDS_PRIORITY_ABOVE_NORMAL      "Above Normal"
+    IDS_PRIORITY_NORMAL            "Normal"
+    IDS_PRIORITY_BELOW_NORMAL      "Below Normal"
+    IDS_PRIORITY_LOW               "Low"
+
+    // Process Details & Snapshot Status
+    IDS_STATUS_RUNNING             "Running"
+    IDS_STATUS_SUSPENDED           "Suspended"
+    IDS_YES                        "Yes"
+    IDS_NO                         "No"
+    IDS_ENABLED                    "Enabled"
+    IDS_DISABLED                   "Disabled"
+    IDS_ENABLED_PERMANENT          "Enabled (Permanent)"
+    IDS_NOT_APPLICABLE             "N/A"
+    IDS_PLATFORM_32BIT             "32-bit"
+    IDS_PLATFORM_64BIT             "64-bit"
+    IDS_PROPERTIES_TITLE_PREFIX    "Properties - "
+    IDS_PROPERTIES_HEADER          "[Process Details]\n"
+    IDS_PROP_IMAGE_NAME            "Image Name: "
+    IDS_PROP_PID                   "PID: "
+    IDS_PROP_PARENT_PID            " (Parent PID: "
+    IDS_PROP_STATUS                "Status: "
+    IDS_PROP_USER                  "User: "
+    IDS_PROP_DESCRIPTION           "Description: "
+    IDS_PROP_ARCHITECTURE          "Architecture: "
+    IDS_PROP_PRIORITY              "Priority: "
+    IDS_PROP_THREADS               "Threads: "
+    IDS_PROP_HANDLES               "Handles: "
+    IDS_PROP_CPU                   "CPU Usage: "
+    IDS_PROP_WORKING_SET           "Working Set: "
+    IDS_PROP_COMMIT                "Commit Size: "
+    IDS_PROP_START_TIME            "Start Time: "
+    IDS_PROP_FILE_PATH             "File Path: "
+
+    // Message Boxes & Prompts
+    IDS_MSG_CONFIRM_END_PROCESS    "Are you sure you want to end process '%s' (PID: %u)?\n\nWarning: Terminating a process can cause data loss and system instability."
+    IDS_MSG_CONFIRM_END_PROCESS_MULTIPLE "Are you sure you want to end %zu selected processes?\n\nWarning: Terminating processes can cause data loss and system instability."
+    IDS_TITLE_CONFIRM_END_PROCESS  "Confirm End Process"
+    IDS_MSG_END_PROCESS_ERROR      "Unable to terminate the process. Administrator privileges may be required, or it may be a protected system process."
+    IDS_TITLE_ERROR                "Error"
+    IDS_MSG_CONFIRM_END_TREE       "Are you sure you want to terminate process '%s' (PID: %u) and all of its child processes (entire process tree)?"
+    IDS_TITLE_CONFIRM_END_TREE     "Confirm End Process Tree"
+    IDS_MSG_END_TREE_PARTIAL       "Some processes could not be terminated."
+    IDS_TITLE_NOTICE               "Notice"
+    IDS_TITLE_INFO                 "Information"
+    IDS_MSG_WARN_REALTIME          "Changing priority class to Realtime may affect system stability. Do you want to proceed?"
+    IDS_TITLE_CHANGE_PRIORITY      "Change Priority"
+    IDS_MSG_CHANGE_PRIORITY_ERROR  "Could not change priority. Access denied."
+    IDS_MSG_ACCESS_DENIED          "Access denied."
+    IDS_MSG_FILE_NOT_FOUND         "Executable file path not found."
+    IDS_MSG_REALTIME_WARNING       "Changing priority class to Realtime may affect OS stability. Do you want to continue?"
+    IDS_MSG_TRAY_MINIMIZED         "Minimized to system tray. Double-click to restore."
+    IDS_MSG_ERROR                  "Error"
+    IDS_MSG_INFO                   "Information"
+    IDS_MSG_WARNING                "Warning"
+
+    // Process Columns Header Names (41 Columns)
+    IDS_COL_HDR_NAME               "Name"
+    IDS_COL_HDR_PID                "PID"
+    IDS_COL_HDR_STATUS             "Status"
+    IDS_COL_HDR_USER_NAME          "User Name"
+    IDS_COL_HDR_CPU                "CPU"
+    IDS_COL_HDR_WORKING_SET        "Memory (Working Set)"
+    IDS_COL_HDR_PRIVATE_WS         "Private Working Set"
+    IDS_COL_HDR_PEAK_WS            "Peak Working Set"
+    IDS_COL_HDR_WS_DELTA           "Working Set Delta"
+    IDS_COL_HDR_COMMIT_SIZE        "Commit Size"
+    IDS_COL_HDR_PAGED_POOL         "Paged Pool"
+    IDS_COL_HDR_NON_PAGED_POOL     "Non-paged Pool"
+    IDS_COL_HDR_THREADS            "Threads"
+    IDS_COL_HDR_HANDLES            "Handles"
+    IDS_COL_HDR_BASE_PRIORITY      "Base Priority"
+    IDS_COL_HDR_DESCRIPTION        "Description"
+    IDS_COL_HDR_OS_CONTEXT         "OS Context"
+    IDS_COL_HDR_FILE_PATH          "Image File Path"
+    IDS_COL_HDR_COMMAND_LINE       "Command Line"
+    IDS_COL_HDR_USER_OBJECTS       "USER Objects"
+    IDS_COL_HDR_GDI_OBJECTS        "GDI Objects"
+    IDS_COL_HDR_IO_READ_COUNT      "I/O Reads"
+    IDS_COL_HDR_IO_READ_BYTES      "I/O Read Bytes"
+    IDS_COL_HDR_IO_WRITE_COUNT     "I/O Writes"
+    IDS_COL_HDR_IO_WRITE_BYTES     "I/O Write Bytes"
+    IDS_COL_HDR_IO_OTHER_COUNT     "I/O Other"
+    IDS_COL_HDR_IO_OTHER_BYTES     "I/O Other Bytes"
+    IDS_COL_HDR_ELEVATED           "Elevated"
+    IDS_COL_HDR_UAC_VIRTUALIZATION "UAC Virtualization"
+    IDS_COL_HDR_DEP_STATUS         "Data Execution Prevention (DEP)"
+    IDS_COL_HDR_ENTERPRISE_CONTEXT "Enterprise Context"
+    IDS_COL_HDR_DPI_AWARENESS      "DPI Awareness"
+    IDS_COL_HDR_PACKAGE_NAME       "Package Name"
+    IDS_COL_HDR_ARCHITECTURE       "Platform"
+    IDS_COL_HDR_PLATFORM           "Platform"
+    IDS_COL_HDR_GPU_USAGE          "GPU"
+    IDS_COL_HDR_GPU_ENGINE         "GPU Engine"
+    IDS_COL_HDR_DEDICATED_GPU_MEM  "Dedicated GPU Memory"
+    IDS_COL_HDR_SHARED_GPU_MEM     "Shared GPU Memory"
+    IDS_COL_HDR_SESSION_ID         "Session ID"
+    IDS_COL_HDR_CREATE_TIME        "Start Time"
+
+    // Services Management
+    IDS_TAB_PROCESSES              "Processes"
+    IDS_TAB_SERVICES               "Services"
+    IDS_SVC_COL_NAME               "Name"
+    IDS_SVC_COL_DISPLAY_NAME       "Display Name"
+    IDS_SVC_COL_PID                "PID"
+    IDS_SVC_COL_STATE              "Status"
+    IDS_SVC_COL_START_TYPE         "Startup Type"
+    IDS_SVC_COL_ACCOUNT            "Log On As"
+    IDS_SVC_COL_DESCRIPTION        "Description"
+    IDS_SVC_STATE_RUNNING          "Running"
+    IDS_SVC_STATE_STOPPED          "Stopped"
+    IDS_SVC_STATE_START_PENDING    "Start Pending"
+    IDS_SVC_STATE_STOP_PENDING     "Stop Pending"
+    IDS_SVC_STATE_PAUSED           "Paused"
+    IDS_SVC_STATE_PAUSE_PENDING    "Pause Pending"
+    IDS_SVC_STATE_CONTINUE_PENDING "Continue Pending"
+    IDS_SVC_STATE_UNKNOWN          "Unknown"
+    IDS_SVC_START_TYPE_AUTO        "Automatic"
+    IDS_SVC_START_TYPE_MANUAL      "Manual"
+    IDS_SVC_START_TYPE_DISABLED    "Disabled"
+    IDS_SVC_START_TYPE_BOOT        "Boot"
+    IDS_SVC_START_TYPE_SYSTEM      "System"
+    IDS_SVC_START_TYPE_UNKNOWN     "Unknown"
+    IDS_MENU_SERVICE_START         "&Start"
+    IDS_MENU_SERVICE_STOP          "S&top"
+    IDS_MENU_SERVICE_RESTART       "&Restart"
+    IDS_MENU_SERVICE_STARTUP       "Startup &Type"
+    IDS_MENU_SERVICE_GO_TO_PROCESS "Go to &Process"
+    IDS_MENU_PROCESS_GO_TO_SERVICE "Go to &Services"
+    IDS_STATUS_SERVICE_COUNTS      "Services: (%u/%u)"
+END
