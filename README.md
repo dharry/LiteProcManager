@@ -4,7 +4,7 @@
 
 
 
-![logo](./img./logo.webp)
+![logo](./img/logo.webp)
 
 ## 概要
 
@@ -31,7 +31,7 @@ LiteProcManagerはWindowsのタスクマネージャーよりそこそこ超軽�
 * クリップボード連携
   * 選択プロセスの情報をセル単位、JSON形式、TSV形式でコピー
 
-![Main](./img./main.webp)
+![Main](./img/main.webp)
 
 
 
