@@ -43,6 +43,7 @@
 #define IDM_ALWAYS_ON_TOP               232
 #define IDM_TOGGLE_THEME                233
 #define IDM_OPTIONS                     234
+#define IDM_HIDE_COLUMN                 235
 
 #define IDM_TRAY_RESTORE                240
 #define IDM_TRAY_EXIT                   241
@@ -450,6 +451,7 @@
 #define IDS_MENU_SERVICE_GO_TO_PROCESS  10328
 #define IDS_MENU_PROCESS_GO_TO_SERVICE  10329
 #define IDS_STATUS_SERVICE_COUNTS       10330
+#define IDS_MENU_HIDE_COLUMN            10331
 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS

@@ -79,6 +79,12 @@ class MainWindow {
   void SetClipboardText(const std::wstring& text);
 
   void ShowContextMenu(int x, int y);
+  void ShowHeaderContextMenu(int x, int y, int col_index);
+  void HideColumnByIndex(int visible_col_index);
+  void OpenColumnSelectorDialog();
+  static LRESULT CALLBACK HeaderSubclassProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam,
+                                             UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+  void UpdateTrayTooltip();
   void ShowTrayContextMenu();
   void MinimizeToTray();
   void RestoreFromTray() const;
@@ -133,6 +139,7 @@ class MainWindow {
   HMENU context_menu_{nullptr};
   HMENU tray_menu_{nullptr};
   HMENU service_context_menu_{nullptr};
+  int context_header_col_index_{-1};
 
   // Services & State
   AppSettings settings_;

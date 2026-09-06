@@ -3,6 +3,7 @@
 #include "main_window.h"
 
 #include <windows.h>
+#include <windowsx.h>
 #include <commctrl.h>
 #include <shellapi.h>
 #include <uxtheme.h>
@@ -594,6 +595,11 @@ void MainWindow::InitializeComponents() {
   ListView_SetImageList(listview_hwnd_, icon_helper_.GetImageList(), LVSIL_SMALL);
   RebuildListViewColumns();
 
+  HWND header = ListView_GetHeader(listview_hwnd_);
+  if (header) {
+    SetWindowSubclass(header, HeaderSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
+  }
+
   // 3. TreeView
   treeview_hwnd_ = CreateWindowExW(
       WS_EX_CLIENTEDGE, WC_TREEVIEWW, L"",
@@ -666,6 +672,7 @@ void MainWindow::InitializeComponents() {
 
   notify_icon_data_.uVersion = NOTIFYICON_VERSION_4;
   Shell_NotifyIconW(NIM_SETVERSION, &notify_icon_data_);
+  UpdateTrayTooltip();
 
   // 6. Condition Filter Controls (2nd toolbar row, y=44)
   // Column combo - uses shared kFilterColumnIds table
@@ -953,6 +960,7 @@ void MainWindow::UpdateStatusLabels() {
       swprintf_s(buf, LanguageManager::GetString(StringId::kStatusCommit), commit_gb, limit_gb);
       SendMessageW(statusbar_hwnd_, SB_SETTEXTW, 5, reinterpret_cast<LPARAM>(buf));
     }
+    UpdateTrayTooltip();
     return;
   }
 
@@ -982,6 +990,7 @@ void MainWindow::UpdateStatusLabels() {
     swprintf_s(buf, LanguageManager::GetString(StringId::kStatusCommit), commit_gb, limit_gb);
     SendMessageW(statusbar_hwnd_, SB_SETTEXTW, 5, reinterpret_cast<LPARAM>(buf));
   }
+  UpdateTrayTooltip();
 }
 
 void MainWindow::ApplyFilterAndDisplay() {
@@ -1640,7 +1649,168 @@ void MainWindow::ShowContextMenu(int x, int y) {
     x = rc.left + 50;
     y = rc.top + 50;
   }
+
+  auto proc = GetSelectedProcess();
+  UINT proc_flags = proc ? MF_ENABLED : MF_GRAYED;
+  EnableMenuItem(context_menu_, IDM_END_TASK, proc_flags);
+  EnableMenuItem(context_menu_, IDM_END_TREE, proc_flags);
+  EnableMenuItem(context_menu_, IDM_OPEN_FILE_LOCATION, proc_flags);
+  EnableMenuItem(context_menu_, IDM_SEARCH_ONLINE, proc_flags);
+  EnableMenuItem(context_menu_, IDM_PROPERTIES, proc_flags);
+  EnableMenuItem(context_menu_, IDM_PROCESS_GO_TO_SERVICE, proc_flags);
+  EnableMenuItem(context_menu_, IDM_ADD_TO_MONITOR, proc_flags);
+
+  int visible_count = 0;
+  for (const auto& col : settings_.columns) {
+    if (col.visible) visible_count++;
+  }
+  UINT hide_flags = (context_header_col_index_ >= 0 && context_header_col_index_ < visible_count && visible_count > 1)
+                        ? MF_ENABLED : MF_GRAYED;
+  EnableMenuItem(context_menu_, IDM_HIDE_COLUMN, hide_flags);
+
+  SetForegroundWindow(hwnd_);
   TrackPopupMenu(context_menu_, TPM_RIGHTBUTTON, x, y, 0, hwnd_, nullptr);
+}
+
+void MainWindow::ShowHeaderContextMenu(int x, int y, int col_index) {
+  HMENU menu = CreatePopupMenu();
+  if (!menu) return;
+
+  int visible_count = 0;
+  for (const auto& col : settings_.columns) {
+    if (col.visible) visible_count++;
+  }
+
+  context_header_col_index_ = col_index;
+
+  UINT hide_flags = MF_STRING;
+  if (col_index < 0 || col_index >= visible_count || visible_count <= 1) {
+    hide_flags |= MF_GRAYED;
+  }
+
+  AppendMenuW(menu, hide_flags, IDM_HIDE_COLUMN, LanguageManager::GetString(StringId::kMenuHideColumn));
+  AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(menu, MF_STRING, IDM_SELECT_COLUMNS, LanguageManager::GetString(StringId::kMenuSelectColumns));
+
+  MENUINFO mi = {sizeof(MENUINFO)};
+  mi.fMask = MIM_BACKGROUND | MIM_APPLYTOSUBMENUS;
+  mi.hbrBack = GetSysColorBrush(COLOR_MENU);
+  SetMenuInfo(menu, &mi);
+
+  SetForegroundWindow(hwnd_);
+  TrackPopupMenu(menu, TPM_RIGHTBUTTON, x, y, 0, hwnd_, nullptr);
+  DestroyMenu(menu);
+}
+
+void MainWindow::HideColumnByIndex(int visible_col_index) {
+  std::vector<size_t> visible_indices;
+  for (size_t i = 0; i < settings_.columns.size(); ++i) {
+    if (settings_.columns[i].visible) {
+      visible_indices.push_back(i);
+    }
+  }
+
+  if (visible_indices.size() <= 1) {
+    return;  // Do not hide the last remaining column
+  }
+
+  if (visible_col_index < 0 || visible_col_index >= static_cast<int>(visible_indices.size())) {
+    return;
+  }
+
+  size_t target_idx = visible_indices[visible_col_index];
+  settings_.columns[target_idx].visible = false;
+  settings_.SaveSettings();
+
+  if (sort_column_index_ == visible_col_index) {
+    sort_column_index_ = -1;
+  } else if (sort_column_index_ > visible_col_index) {
+    sort_column_index_--;
+  }
+
+  RebuildListViewColumns();
+  UpdateListView();
+}
+
+void MainWindow::OpenColumnSelectorDialog() {
+  ColumnSelectorDialog dlg(hwnd_, settings_.columns, settings_.theme);
+  if (dlg.Show()) {
+    settings_.columns = dlg.GetColumns();
+    settings_.SaveSettings();
+    RebuildListViewColumns();
+    UpdateListView();
+  }
+}
+
+LRESULT CALLBACK MainWindow::HeaderSubclassProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam,
+                                                UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+  auto* self = reinterpret_cast<MainWindow*>(dwRefData);
+  if (!self) {
+    return DefSubclassProc(hwnd, msg, wparam, lparam);
+  }
+
+  if (msg == WM_RBUTTONUP || msg == WM_CONTEXTMENU) {
+    POINT screen_pt;
+    if (msg == WM_CONTEXTMENU) {
+      screen_pt.x = GET_X_LPARAM(lparam);
+      screen_pt.y = GET_Y_LPARAM(lparam);
+      if (screen_pt.x == -1 && screen_pt.y == -1) {
+        GetCursorPos(&screen_pt);
+      }
+    } else {
+      screen_pt.x = GET_X_LPARAM(lparam);
+      screen_pt.y = GET_Y_LPARAM(lparam);
+      ClientToScreen(hwnd, &screen_pt);
+    }
+
+    POINT client_pt = screen_pt;
+    ScreenToClient(hwnd, &client_pt);
+
+    HDHITTESTINFO hdhti = {0};
+    hdhti.pt = client_pt;
+    int hit_col = static_cast<int>(SendMessageW(hwnd, HDM_HITTEST, 0, reinterpret_cast<LPARAM>(&hdhti)));
+    if (hit_col < 0) {
+      int count = Header_GetItemCount(hwnd);
+      for (int i = 0; i < count; ++i) {
+        RECT rc;
+        if (Header_GetItemRect(hwnd, i, &rc)) {
+          if (PtInRect(&rc, client_pt)) {
+            hit_col = i;
+            break;
+          }
+        }
+      }
+    }
+
+    self->ShowHeaderContextMenu(screen_pt.x, screen_pt.y, hit_col);
+    return 0;
+  }
+
+  return DefSubclassProc(hwnd, msg, wparam, lparam);
+}
+
+void MainWindow::UpdateTrayTooltip() {
+  if (notify_icon_data_.cbSize == 0) return;
+
+  double cpu_usage = totals_.total_cpu_usage;
+  if (cpu_usage < 0.0) cpu_usage = 0.0;
+  if (cpu_usage > 100.0) cpu_usage = 100.0;
+
+  double mem_percent = 0.0;
+  if (totals_.total_physical_memory > 0) {
+    mem_percent = (static_cast<double>(totals_.used_physical_memory) * 100.0) /
+                  static_cast<double>(totals_.total_physical_memory);
+    if (mem_percent < 0.0) mem_percent = 0.0;
+    if (mem_percent > 100.0) mem_percent = 100.0;
+  }
+
+  std::wstring mem_label = LanguageManager::IsJapanese() ? L"メモリ" : L"Memory";
+  wchar_t tip[128];
+  swprintf_s(tip, L"CPU %.1f%%\n%s %.1f%%", cpu_usage, mem_label.c_str(), mem_percent);
+
+  wcsncpy_s(notify_icon_data_.szTip, tip, _TRUNCATE);
+  notify_icon_data_.uFlags = NIF_TIP | NIF_SHOWTIP;
+  Shell_NotifyIconW(NIM_MODIFY, &notify_icon_data_);
 }
 
 void MainWindow::ShowTrayContextMenu() {
@@ -1833,6 +2003,9 @@ void MainWindow::UpdateLanguageAndUI() {
   AppendMenuW(context_menu_, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(context_menu_, MF_STRING, IDM_ADD_TO_MONITOR, LanguageManager::GetString(StringId::kRuleEditTitleAdd));
   AppendMenuW(context_menu_, MF_STRING, IDM_MONITOR_SETTINGS, LanguageManager::GetString(StringId::kMenuMonitorRules));
+  AppendMenuW(context_menu_, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(context_menu_, MF_STRING, IDM_HIDE_COLUMN, LanguageManager::GetString(StringId::kMenuHideColumn));
+  AppendMenuW(context_menu_, MF_STRING, IDM_SELECT_COLUMNS, LanguageManager::GetString(StringId::kMenuSelectColumns));
 
   apply_menu_info(context_menu_);
   apply_menu_info(priority_menu);
@@ -2511,16 +2684,14 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
           break;
         }
 
-        case IDC_BTN_COLUMNS:
-        case IDM_SELECT_COLUMNS: {
-          ColumnSelectorDialog dlg(hwnd_, settings_.columns, settings_.theme);
-          if (dlg.Show()) {
-            settings_.columns = dlg.GetColumns();
-            RebuildListViewColumns();
-            UpdateListView();
-          }
+        case IDM_HIDE_COLUMN:
+          HideColumnByIndex(context_header_col_index_);
           break;
-        }
+
+        case IDC_BTN_COLUMNS:
+        case IDM_SELECT_COLUMNS:
+          OpenColumnSelectorDialog();
+          break;
 
         case IDC_BTN_TOPMOST:
         case IDM_ALWAYS_ON_TOP: {
@@ -2707,6 +2878,12 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
         } else if (nmhdr->code == NM_RCLICK) {
           POINT pt;
           GetCursorPos(&pt);
+          POINT client_pt = pt;
+          ScreenToClient(listview_hwnd_, &client_pt);
+          LVHITTESTINFO lvhti = {0};
+          lvhti.pt = client_pt;
+          ListView_SubItemHitTest(listview_hwnd_, &lvhti);
+          context_header_col_index_ = (lvhti.iSubItem >= 0) ? lvhti.iSubItem : -1;
           ShowContextMenu(pt.x, pt.y);
           return 0;
         } else if (nmhdr->code == NM_DBLCLK) {
@@ -2796,7 +2973,9 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 
     case WM_APP_TRAYMSG: {
       UINT event_msg = LOWORD(lparam);
-      if (event_msg == WM_LBUTTONUP || event_msg == WM_LBUTTONDBLCLK ||
+      if (event_msg == WM_MOUSEMOVE || event_msg == NIN_POPUPOPEN) {
+        UpdateTrayTooltip();
+      } else if (event_msg == WM_LBUTTONUP || event_msg == WM_LBUTTONDBLCLK ||
           event_msg == NIN_SELECT || event_msg == NIN_KEYSELECT) {
         RestoreFromTray();
       } else if (event_msg == WM_RBUTTONUP || event_msg == WM_CONTEXTMENU) {
@@ -2876,10 +3055,15 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
       return 0;
     }
 
-    case WM_DESTROY:
+    case WM_DESTROY: {
+      HWND header = ListView_GetHeader(listview_hwnd_);
+      if (header) {
+        RemoveWindowSubclass(header, HeaderSubclassProc, 1);
+      }
       KillTimer(hwnd_, IDT_REFRESH_TIMER);
       PostQuitMessage(0);
       return 0;
+    }
   }
 
   return DefWindowProcW(hwnd, msg, wparam, lparam);

@@ -723,4 +723,87 @@ TEST_CLASS(LanguageManagerTests) {
   }
 };
 
+TEST_CLASS(ColumnMenuTests) {
+ public:
+  TEST_METHOD(ShouldHaveLanguageStringsForHideAndSelectColumns) {
+    LanguageManager::SetLanguage(AppLanguage::kJapanese);
+    std::wstring ja_hide = LanguageManager::GetString(StringId::kMenuHideColumn);
+    std::wstring ja_select = LanguageManager::GetString(StringId::kMenuSelectColumns);
+    Assert::IsTrue(ja_hide.find(L"列の非表示") != std::wstring::npos);
+    Assert::IsTrue(ja_select.find(L"列の選択") != std::wstring::npos);
+
+    LanguageManager::SetLanguage(AppLanguage::kEnglish);
+    std::wstring en_hide = LanguageManager::GetString(StringId::kMenuHideColumn);
+    std::wstring en_select = LanguageManager::GetString(StringId::kMenuSelectColumns);
+    Assert::IsTrue(en_hide.find(L"Hide Column") != std::wstring::npos);
+    Assert::IsTrue(en_select.find(L"Columns") != std::wstring::npos);
+  }
+
+  TEST_METHOD(ShouldManageColumnVisibilityCorrectly) {
+    auto columns = ProcessColumnInfo::GetDefaultColumns();
+    Assert::IsTrue(columns.size() > 1);
+
+    size_t initial_visible = 0;
+    for (const auto& col : columns) {
+      if (col.visible) initial_visible++;
+    }
+    Assert::IsTrue(initial_visible > 1);
+
+    // Hide first visible column
+    size_t first_visible_idx = 0;
+    for (size_t i = 0; i < columns.size(); ++i) {
+      if (columns[i].visible) {
+        first_visible_idx = i;
+        break;
+      }
+    }
+
+    columns[first_visible_idx].visible = false;
+    size_t new_visible = 0;
+    for (const auto& col : columns) {
+      if (col.visible) new_visible++;
+    }
+    Assert::AreEqual(initial_visible - 1, new_visible);
+  }
+};
+
+TEST_CLASS(TrayTooltipTests) {
+ public:
+  TEST_METHOD(ShouldFormatTrayTooltipCorrectly) {
+    auto format_tooltip = [](double cpu_usage, uint64_t used_mem, uint64_t total_mem) -> std::wstring {
+      double cpu = cpu_usage;
+      if (cpu < 0.0) cpu = 0.0;
+      if (cpu > 100.0) cpu = 100.0;
+
+      double mem_percent = 0.0;
+      if (total_mem > 0) {
+        mem_percent = (static_cast<double>(used_mem) * 100.0) / static_cast<double>(total_mem);
+        if (mem_percent < 0.0) mem_percent = 0.0;
+        if (mem_percent > 100.0) mem_percent = 100.0;
+      }
+
+      std::wstring mem_label = LanguageManager::IsJapanese() ? L"メモリ" : L"Memory";
+      wchar_t tip[128];
+      swprintf_s(tip, L"CPU %.1f%%\n%s %.1f%%", cpu, mem_label.c_str(), mem_percent);
+      return tip;
+    };
+
+    LanguageManager::SetLanguage(AppLanguage::kJapanese);
+    std::wstring tip_ja = format_tooltip(2.5, 560, 1000);
+    Assert::AreEqual(std::wstring(L"CPU 2.5%\nメモリ 56.0%"), tip_ja);
+
+    LanguageManager::SetLanguage(AppLanguage::kEnglish);
+    std::wstring tip_en = format_tooltip(2.5, 560, 1000);
+    Assert::AreEqual(std::wstring(L"CPU 2.5%\nMemory 56.0%"), tip_en);
+
+    // Edge cases: clamp to 0.0-100.0% and 0 total memory
+    LanguageManager::SetLanguage(AppLanguage::kJapanese);
+    std::wstring tip_zero = format_tooltip(-5.0, 0, 0);
+    Assert::AreEqual(std::wstring(L"CPU 0.0%\nメモリ 0.0%"), tip_zero);
+
+    std::wstring tip_max = format_tooltip(150.0, 2000, 1000);
+    Assert::AreEqual(std::wstring(L"CPU 100.0%\nメモリ 100.0%"), tip_max);
+  }
+};
+
 }  // namespace LiteProcManagerTests

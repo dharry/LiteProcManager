@@ -459,6 +459,7 @@ BEGIN
     IDS_MENU_SERVICE_GO_TO_PROCESS "プロセスに移動(&P)"
     IDS_MENU_PROCESS_GO_TO_SERVICE "関連サービスに移動(&S)"
     IDS_STATUS_SERVICE_COUNTS      "サービス: (%u/%u)"
+    IDS_MENU_HIDE_COLUMN           "列の非表示(&H)"
 END
 
 // ========================================================
@@ -749,4 +750,5 @@ BEGIN
     IDS_MENU_SERVICE_GO_TO_PROCESS "Go to &Process"
     IDS_MENU_PROCESS_GO_TO_SERVICE "Go to &Services"
     IDS_STATUS_SERVICE_COUNTS      "Services: (%u/%u)"
+    IDS_MENU_HIDE_COLUMN           "&Hide Column"
 END

@@ -92,6 +92,7 @@ UINT StringIdToResourceId(StringId id) {
     case StringId::kMenuView: return IDS_MENU_VIEW;
     case StringId::kMenuOptions: return IDS_MENU_OPTIONS;
     case StringId::kMenuMonitorRules: return IDS_MENU_MONITOR_RULES;
+    case StringId::kMenuHideColumn: return IDS_MENU_HIDE_COLUMN;
     case StringId::kMenuSelectColumns: return IDS_MENU_SELECT_COLUMNS;
     case StringId::kMenuAlwaysOnTop: return IDS_MENU_ALWAYS_ON_TOP;
     case StringId::kMenuToggleTheme: return IDS_MENU_TOGGLE_THEME;

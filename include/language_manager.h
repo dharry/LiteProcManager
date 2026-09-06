@@ -28,6 +28,7 @@ enum class StringId {
   kMenuView,
   kMenuOptions,
   kMenuMonitorRules,
+  kMenuHideColumn,
   kMenuSelectColumns,
   kMenuAlwaysOnTop,
   kMenuToggleTheme,
