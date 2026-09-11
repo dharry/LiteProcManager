@@ -5,6 +5,30 @@
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
+namespace {
+HANDLE g_single_instance_mutex = nullptr;
+}  // namespace
+
+// Releases the single-instance lock before this process relaunches itself
+// (self-restart / restart-as-admin). Without this, the freshly spawned
+// process can start and probe the mutex before this process has fully torn
+// down, see ERROR_ALREADY_EXISTS, and quit thinking another instance is
+// already running - i.e. the "restart" silently does nothing.
+void ReleaseSingleInstanceLock() {
+  if (g_single_instance_mutex != nullptr) {
+    ReleaseMutex(g_single_instance_mutex);
+    CloseHandle(g_single_instance_mutex);
+    g_single_instance_mutex = nullptr;
+  }
+}
+
+// Re-establishes the single-instance lock after a restart attempt was
+// aborted (e.g. the UAC prompt was cancelled), so this still-running
+// process stays protected against a duplicate launch.
+void RestoreSingleInstanceLock(HANDLE mutex) {
+  g_single_instance_mutex = mutex;
+}
+
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, PWSTR /*pCmdLine*/, int nCmdShow) {
   // Single instance control per user session
   HANDLE mutex = CreateMutexW(nullptr, TRUE, L"Local\\LiteProcManager_SingleInstance_Mutex");
@@ -26,6 +50,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, PWSTR /*pC
     return 0;
   }
 
+  g_single_instance_mutex = mutex;
+
   int exit_code = 0;
   {
     lite_proc_manager::MainWindow main_window;
@@ -36,7 +62,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, PWSTR /*pC
     }
   }
 
-  ReleaseMutex(mutex);
-  CloseHandle(mutex);
+  // A restart flow may have already released and cleared this via
+  // ReleaseSingleInstanceLock().
+  ReleaseSingleInstanceLock();
   return exit_code;
 }

@@ -26,6 +26,12 @@
 #pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "shell32.lib")
 
+// Defined in main.cc; releases the single-instance mutex so a relaunched
+// copy of this process does not mistake this (soon-to-exit) instance for
+// an already-running one.
+void ReleaseSingleInstanceLock();
+void RestoreSingleInstanceLock(HANDLE mutex);
+
 namespace lite_proc_manager {
 
 namespace {
@@ -1561,6 +1567,11 @@ void MainWindow::RestartApplication() {
   wchar_t exe_path[MAX_PATH] = {0};
   GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
 
+  // Release the single-instance lock before spawning the new copy, otherwise
+  // it can start and find the mutex still held by this (exiting) process and
+  // quit immediately, making the restart appear to do nothing.
+  ReleaseSingleInstanceLock();
+
   ShellExecuteW(nullptr, L"open", exe_path, nullptr, nullptr, SW_SHOWNORMAL);
 
   if (notify_icon_data_.cbSize > 0) {
@@ -1579,11 +1590,25 @@ void MainWindow::RestartAsAdministrator() {
     sei.lpFile = exe_path;
     sei.hwnd = hwnd_;
     sei.nShow = SW_SHOWNORMAL;
+
+    // Release the single-instance lock first. The elevated child can start
+    // probing for it while this process is still tearing down; if the mutex
+    // is still held at that moment, the child sees "already running" and
+    // exits immediately without ever showing an elevated window.
+    ReleaseSingleInstanceLock();
+
     if (ShellExecuteExW(&sei)) {
       if (notify_icon_data_.cbSize > 0) {
         Shell_NotifyIconW(NIM_DELETE, &notify_icon_data_);
       }
       ExitProcess(0);
+    }
+    // Elevation was cancelled/denied (e.g. user clicked "No" on the UAC
+    // prompt) - this process keeps running, so re-acquire the lock rather
+    // than leaving the app unprotected against a duplicate launch.
+    HANDLE mutex = CreateMutexW(nullptr, TRUE, L"Local\\LiteProcManager_SingleInstance_Mutex");
+    if (mutex != nullptr) {
+      RestoreSingleInstanceLock(mutex);
     }
   }
 }
