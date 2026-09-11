@@ -793,7 +793,7 @@ void MainWindow::PopulateIntervalComboBox() {
 
   SendMessageW(interval_combo_, CB_RESETCONTENT, 0, 0);
 
-  std::vector<int> candidate_seconds = {1, 2, 5, 10, 30, 60};
+  std::vector<int> candidate_seconds = {1, 2, 5, 10, 15, 30, 60, 120, 300};
   int cur_sec = settings_.refresh_interval_seconds;
   if (cur_sec > 0 && std::find(candidate_seconds.begin(), candidate_seconds.end(), cur_sec) == candidate_seconds.end()) {
     candidate_seconds.push_back(cur_sec);

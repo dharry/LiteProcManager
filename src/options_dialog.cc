@@ -207,10 +207,10 @@ void OptionsDialog::InitializeDialog(HWND hwnd) {
   std::wstring ui_font_disp = settings_.ui_font_name + L", " + std::to_wstring(settings_.ui_font_size) + L"pt";
   SetWindowTextW(lbl_ui_font_val_, ui_font_disp.c_str());
 
-  // 3. Refresh Interval Trackbar (0-30 seconds)
-  SendMessageW(slider_interval_, TBM_SETRANGE, TRUE, MAKELPARAM(0, 30));
-  SendMessageW(slider_interval_, TBM_SETTICFREQ, 5, 0);
-  int cur_interval = std::clamp(settings_.refresh_interval_seconds, 0, 30);
+  // 3. Refresh Interval Trackbar (0-300 seconds)
+  SendMessageW(slider_interval_, TBM_SETRANGE, TRUE, MAKELPARAM(0, 300));
+  SendMessageW(slider_interval_, TBM_SETTICFREQ, 30, 0);
+  int cur_interval = std::clamp(settings_.refresh_interval_seconds, 0, 300);
   SendMessageW(slider_interval_, TBM_SETPOS, TRUE, cur_interval);
   UpdateIntervalLabel(cur_interval);
 
@@ -353,7 +353,7 @@ void OptionsDialog::OnSave() {
   settings_.theme = AppTheme::kLight;
 
   int interval = static_cast<int>(SendMessageW(slider_interval_, TBM_GETPOS, 0, 0));
-  settings_.refresh_interval_seconds = std::clamp(interval, 0, 30);
+  settings_.refresh_interval_seconds = std::clamp(interval, 0, 300);
 
   settings_.always_on_top = (SendMessageW(chk_always_top_, BM_GETCHECK, 0, 0) == BST_CHECKED);
   settings_.minimize_to_tray = (SendMessageW(chk_tray_, BM_GETCHECK, 0, 0) == BST_CHECKED);
