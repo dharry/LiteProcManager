@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "../include/app_settings.h"
+#include "../include/icon_helper.h"
 #include "../include/json_helper.h"
 #include "../include/language_manager.h"
 #include "../include/monitor_rule.h"
@@ -47,6 +48,62 @@ FILETIME MakeFileTime(uint64_t value) {
   time.QuadPart = value;
   return FILETIME{time.LowPart, time.HighPart};
 }
+
+TEST_CLASS(IconHelperTests) {
+ public:
+  TEST_METHOD(CacheAndImageList_ShouldRemainBounded) {
+    constexpr size_t kCacheCapacity = 3;
+    IconHelper icon_helper(kCacheCapacity);
+    icon_helper.Initialize(16);
+
+    for (int i = 0; i < 20; ++i) {
+      std::wstring path = L"C:\\IconCacheTest\\temporary_" +
+                          std::to_wstring(i) + L".exe";
+      icon_helper.GetIconIndex(path);
+      Assert::IsTrue(icon_helper.GetCachedIconCount() <= kCacheCapacity);
+      Assert::IsTrue(ImageList_GetImageCount(icon_helper.GetImageList()) <=
+                     static_cast<int>(kCacheCapacity + 1));
+    }
+
+    int image_count = ImageList_GetImageCount(icon_helper.GetImageList());
+    icon_helper.GetIconIndex(L"C:\\IconCacheTest\\temporary_0.exe");
+    Assert::AreEqual(image_count,
+                     ImageList_GetImageCount(icon_helper.GetImageList()));
+  }
+
+  TEST_METHOD(SameFileIdentity_ShouldReuseIconSlot) {
+    std::wstring original_path = L"IconCacheIdentityTest.exe";
+    std::wstring linked_path = L"IconCacheIdentityTestLink.exe";
+    DeleteFileW(linked_path.c_str());
+    DeleteFileW(original_path.c_str());
+
+    HANDLE file = CreateFileW(
+        original_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL, nullptr);
+    Assert::AreNotEqual(INVALID_HANDLE_VALUE, file);
+    if (file == INVALID_HANDLE_VALUE) {
+      return;
+    }
+    CloseHandle(file);
+    Assert::IsTrue(CreateHardLinkW(linked_path.c_str(), original_path.c_str(),
+                                  nullptr) != FALSE);
+
+    IconHelper icon_helper(3);
+    icon_helper.Initialize(16);
+    int original_index = icon_helper.GetIconIndex(original_path);
+    size_t original_cache_size = icon_helper.GetCachedIconCount();
+    int original_image_count = ImageList_GetImageCount(icon_helper.GetImageList());
+
+    int linked_index = icon_helper.GetIconIndex(linked_path);
+    Assert::AreEqual(original_index, linked_index);
+    Assert::AreEqual(original_cache_size, icon_helper.GetCachedIconCount());
+    Assert::AreEqual(original_image_count,
+                     ImageList_GetImageCount(icon_helper.GetImageList()));
+
+    DeleteFileW(linked_path.c_str());
+    DeleteFileW(original_path.c_str());
+  }
+};
 
 TEST_CLASS(ProcessSnapshotTests) {
  public:

@@ -1459,8 +1459,6 @@ void MainWindow::UpdateTreeView(const ProcessTreeViewState* preserved_state) {
 void MainWindow::AddTreeNode(HTREEITEM parent_node,
                              const std::shared_ptr<ProcessItem>& process,
                              std::vector<TreeNodeHandle>* node_handles) {
-  int icon_idx = icon_helper_.GetIconIndex(process->file_path);
-
   std::wstring mem_label = LanguageManager::GetColumnHeaderText(ProcessColumnId::kWorkingSet);
   wchar_t text[512];
   swprintf_s(text, L"%s (PID: %u) - CPU: %s, %s: %s",
@@ -1475,8 +1473,8 @@ void MainWindow::AddTreeNode(HTREEITEM parent_node,
   tvis.hInsertAfter = TVI_LAST;
   tvis.item.mask = TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE | TVIF_PARAM;
   tvis.item.pszText = text;
-  tvis.item.iImage = icon_idx;
-  tvis.item.iSelectedImage = icon_idx;
+  tvis.item.iImage = I_IMAGECALLBACK;
+  tvis.item.iSelectedImage = I_IMAGECALLBACK;
   tvis.item.lParam = reinterpret_cast<LPARAM>(process.get());
 
   HTREEITEM item = TreeView_InsertItem(treeview_hwnd_, &tvis);
@@ -3320,7 +3318,26 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
           return 0;
         }
       } else if (nmhdr->hwndFrom == treeview_hwnd_) {
-        if (nmhdr->code == NM_CUSTOMDRAW) {
+        if (nmhdr->code == TVN_GETDISPINFOW) {
+          auto* display_info = reinterpret_cast<NMTVDISPINFOW*>(lparam);
+          TVITEMW tree_item{};
+          tree_item.mask = TVIF_PARAM;
+          tree_item.hItem = display_info->item.hItem;
+          if (!TreeView_GetItem(treeview_hwnd_, &tree_item) ||
+              tree_item.lParam == 0) {
+            return 0;
+          }
+
+          auto* process = reinterpret_cast<ProcessItem*>(tree_item.lParam);
+          int icon_index = icon_helper_.GetIconIndex(process->file_path);
+          if ((display_info->item.mask & TVIF_IMAGE) != 0) {
+            display_info->item.iImage = icon_index;
+          }
+          if ((display_info->item.mask & TVIF_SELECTEDIMAGE) != 0) {
+            display_info->item.iSelectedImage = icon_index;
+          }
+          return 0;
+        } else if (nmhdr->code == NM_CUSTOMDRAW) {
           if (settings_.theme == AppTheme::kDark) {
             auto* nmtvcd = reinterpret_cast<LPNMTVCUSTOMDRAW>(lparam);
             switch (nmtvcd->nmcd.dwDrawStage) {

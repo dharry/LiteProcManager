@@ -4,6 +4,7 @@
 #include "resource.h"
 
 #include <shellapi.h>
+#include <iterator>
 #include <vector>
 
 #pragma comment(lib, "comctl32.lib")
@@ -11,7 +12,8 @@
 
 namespace lite_proc_manager {
 
-IconHelper::IconHelper() = default;
+IconHelper::IconHelper(size_t cache_capacity)
+    : cache_capacity_(cache_capacity) {}
 
 IconHelper::~IconHelper() {
   if (image_list_) {
@@ -96,14 +98,61 @@ HICON IconHelper::CreateToolbarIcon(ToolbarIconType type, int size) {
   return static_cast<HICON>(LoadImageW(inst, MAKEINTRESOURCEW(res_id), IMAGE_ICON, size, size, LR_DEFAULTCOLOR));
 }
 
+std::optional<IconHelper::FileIdentity> IconHelper::GetFileIdentity(
+    const std::wstring& file_path) {
+  HANDLE file = CreateFileW(
+      file_path.c_str(), FILE_READ_ATTRIBUTES,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (file == INVALID_HANDLE_VALUE) {
+    return std::nullopt;
+  }
+
+  BY_HANDLE_FILE_INFORMATION file_info{};
+  bool succeeded = GetFileInformationByHandle(file, &file_info) != FALSE;
+  CloseHandle(file);
+  if (!succeeded) {
+    return std::nullopt;
+  }
+
+  return FileIdentity{
+      file_info.dwVolumeSerialNumber,
+      file_info.nFileIndexHigh,
+      file_info.nFileIndexLow,
+      file_info.ftCreationTime,
+  };
+}
+
+bool IconHelper::IsSameFileIdentity(const FileIdentity& lhs,
+                                    const FileIdentity& rhs) {
+  return lhs.volume_serial_number == rhs.volume_serial_number &&
+         lhs.file_index_high == rhs.file_index_high &&
+         lhs.file_index_low == rhs.file_index_low &&
+         CompareFileTime(&lhs.creation_time, &rhs.creation_time) == 0;
+}
+
 int IconHelper::GetIconIndex(const std::wstring& file_path) {
-  if (file_path.empty()) {
+  if (file_path.empty() || image_list_ == nullptr) {
     return default_icon_index_;
   }
 
   auto it = icon_cache_.find(file_path);
   if (it != icon_cache_.end()) {
-    return it->second;
+    lru_paths_.splice(lru_paths_.begin(), lru_paths_, it->second.lru_position);
+    return it->second.image_index;
+  }
+
+  auto file_identity = GetFileIdentity(file_path);
+  if (file_identity.has_value()) {
+    for (auto& cached : icon_cache_) {
+      if (cached.second.file_identity.has_value() &&
+          IsSameFileIdentity(file_identity.value(),
+                             cached.second.file_identity.value())) {
+        lru_paths_.splice(lru_paths_.begin(), lru_paths_,
+                          cached.second.lru_position);
+        return cached.second.image_index;
+      }
+    }
   }
 
   SHFILEINFOW sfi = {0};
@@ -112,13 +161,38 @@ int IconHelper::GetIconIndex(const std::wstring& file_path) {
       SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES);
 
   if (res != 0 && sfi.hIcon != nullptr) {
-    int idx = ImageList_AddIcon(image_list_, sfi.hIcon);
+    int image_index = -1;
+    if (cache_capacity_ == 0) {
+      DestroyIcon(sfi.hIcon);
+      return default_icon_index_;
+    }
+
+    if (icon_cache_.size() < cache_capacity_) {
+      image_index = ImageList_AddIcon(image_list_, sfi.hIcon);
+    } else {
+      auto least_recent_path = std::prev(lru_paths_.end());
+      auto least_recent = icon_cache_.find(*least_recent_path);
+      if (least_recent != icon_cache_.end()) {
+        image_index = least_recent->second.image_index;
+        if (ImageList_ReplaceIcon(image_list_, image_index, sfi.hIcon) == -1) {
+          image_index = -1;
+        } else {
+          icon_cache_.erase(least_recent);
+          lru_paths_.erase(least_recent_path);
+        }
+      }
+    }
     DestroyIcon(sfi.hIcon);
-    icon_cache_[file_path] = idx;
-    return idx;
+
+    if (image_index >= 0) {
+      lru_paths_.push_front(file_path);
+      icon_cache_.emplace(
+          file_path,
+          IconCacheEntry{image_index, lru_paths_.begin(), file_identity});
+      return image_index;
+    }
   }
 
-  icon_cache_[file_path] = default_icon_index_;
   return default_icon_index_;
 }
 

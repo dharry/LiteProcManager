@@ -1,6 +1,7 @@
 set(TEST_SOURCES
     lite_proc_manager_test.cc
     ../src/language_manager.cc
+    ../src/icon_helper.cc
     ../src/process_snapshot_service.cc
     ../src/process_item.cc
     ../src/process_column.cc
@@ -18,6 +19,7 @@ target_include_directories(LiteProcManagerTests PRIVATE
 )
 
 target_link_libraries(LiteProcManagerTests PRIVATE
+    comctl32
     version
     advapi32
     user32
