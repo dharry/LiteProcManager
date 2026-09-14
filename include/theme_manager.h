@@ -28,6 +28,8 @@ struct ColorPalette {
   COLORREF header_background;
   COLORREF header_text;
   COLORREF grid_line_color;
+  COLORREF focus_border;
+  COLORREF placeholder_text;
 
   HBRUSH window_brush{nullptr};
   HBRUSH surface_brush{nullptr};
@@ -39,9 +41,11 @@ class ThemeManager {
  public:
   static void Initialize();
   static void Shutdown();
+  static void SetPreferredAppTheme(AppTheme theme);
 
   static const ColorPalette& GetPalette(AppTheme theme);
   static void ApplyTheme(HWND hwnd, AppTheme theme);
+  static void ApplyFontToWindowTree(HWND hwnd, HFONT font);
   static void ApplyListViewHeaderTheme(HWND listview_hwnd, AppTheme theme, int sort_column = -1, bool sort_ascending = true);
   static HFONT CreateAppFont(const std::wstring& font_name, int font_size_pt, bool bold = false);
 

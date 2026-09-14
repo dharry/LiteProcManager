@@ -15,8 +15,12 @@
 
 namespace lite_proc_manager {
 
-OptionsDialog::OptionsDialog(HWND parent_hwnd, const AppSettings& settings)
-    : parent_hwnd_(parent_hwnd), settings_(settings) {}
+OptionsDialog::OptionsDialog(HWND parent_hwnd, const AppSettings& settings,
+                             AppTheme applied_theme, HFONT ui_font)
+    : parent_hwnd_(parent_hwnd),
+      settings_(settings),
+      applied_theme_(applied_theme),
+      ui_font_(ui_font) {}
 
 bool OptionsDialog::Show() {
   INT_PTR res = DialogBoxParamW(
@@ -55,6 +59,7 @@ std::wstring TrimString(const std::wstring& s) {
 struct AddExcludedDialogContext {
   std::wstring result_name;
   AppTheme theme{AppTheme::kLight};
+  HFONT ui_font{nullptr};
 };
 
 INT_PTR CALLBACK AddExcludedProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -68,6 +73,7 @@ INT_PTR CALLBACK AddExcludedProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
       SetDlgItemTextW(hwnd, IDOK, LanguageManager::GetString(StringId::kBtnOk));
       SetDlgItemTextW(hwnd, IDCANCEL, LanguageManager::GetString(StringId::kBtnCancel));
       ThemeManager::ApplyTheme(hwnd, ctx->theme);
+      ThemeManager::ApplyFontToWindowTree(hwnd, ctx->ui_font);
       bool is_dark = (ctx->theme == AppTheme::kDark);
       SetWindowTheme(GetDlgItem(hwnd, IDC_ADD_EXCL_EDIT), is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
       SetWindowTheme(GetDlgItem(hwnd, IDOK), is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
@@ -121,9 +127,11 @@ INT_PTR CALLBACK AddExcludedProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
   return FALSE;
 }
 
-bool PromptAddExcludedProcess(HWND parent, AppTheme theme, std::wstring* out_name) {
+bool PromptAddExcludedProcess(HWND parent, AppTheme theme, HFONT ui_font,
+                              std::wstring* out_name) {
   AddExcludedDialogContext ctx;
   ctx.theme = theme;
+  ctx.ui_font = ui_font;
   INT_PTR res = DialogBoxParamW(
       GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDD_ADD_EXCLUDED_DIALOG), parent,
       AddExcludedProc, reinterpret_cast<LPARAM>(&ctx));
@@ -137,17 +145,25 @@ bool PromptAddExcludedProcess(HWND parent, AppTheme theme, std::wstring* out_nam
 
 void OptionsDialog::InitializeDialog(HWND hwnd) {
   SetWindowTextW(hwnd, LanguageManager::GetString(StringId::kDlgOptionsTitle));
-  ThemeManager::ApplyTheme(hwnd, settings_.theme);
+  ThemeManager::ApplyTheme(hwnd, applied_theme_);
+  ThemeManager::ApplyFontToWindowTree(hwnd, ui_font_);
 
-  bool is_dark = (settings_.theme == AppTheme::kDark);
+  bool is_dark = (applied_theme_ == AppTheme::kDark);
+  const auto& palette = ThemeManager::GetPalette(applied_theme_);
   auto apply_ctrl_theme = [&](HWND ctrl) {
     if (ctrl) {
       SetWindowTheme(ctrl, is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
     }
   };
+  auto apply_combo_theme = [&](HWND ctrl) {
+    if (ctrl) {
+      SetWindowTheme(ctrl, is_dark ? L"DarkMode_CFD" : L"Explorer", nullptr);
+    }
+  };
 
   // Localize Static Labels and Buttons
   SetDlgItemTextW(hwnd, IDC_OPT_LBL_LANG, LanguageManager::GetString(StringId::kLabelLanguage));
+  SetDlgItemTextW(hwnd, IDC_OPT_LBL_THEME, LanguageManager::GetString(StringId::kLabelTheme));
   SetDlgItemTextW(hwnd, IDC_OPT_LBL_LIST_FONT, LanguageManager::GetString(StringId::kLabelListFont));
   SetDlgItemTextW(hwnd, IDC_OPT_BTN_LIST_FONT, LanguageManager::GetString(StringId::kBtnChangeFont));
   SetDlgItemTextW(hwnd, IDC_OPT_LBL_UI_FONT, LanguageManager::GetString(StringId::kLabelUiFont));
@@ -164,6 +180,7 @@ void OptionsDialog::InitializeDialog(HWND hwnd) {
 
   // Get Control Handles
   combo_lang_ = GetDlgItem(hwnd, IDC_OPT_COMBO_LANG);
+  combo_theme_ = GetDlgItem(hwnd, IDC_OPT_COMBO_THEME);
   lbl_list_font_val_ = GetDlgItem(hwnd, IDC_OPT_LBL_LIST_FONT_VAL);
   btn_list_font_ = GetDlgItem(hwnd, IDC_OPT_BTN_LIST_FONT);
   lbl_ui_font_val_ = GetDlgItem(hwnd, IDC_OPT_LBL_UI_FONT_VAL);
@@ -178,7 +195,8 @@ void OptionsDialog::InitializeDialog(HWND hwnd) {
   btn_del_excluded_ = GetDlgItem(hwnd, IDC_OPT_BTN_DEL_EXCLUDED);
 
   // Apply Themes
-  apply_ctrl_theme(combo_lang_);
+  apply_combo_theme(combo_lang_);
+  apply_combo_theme(combo_theme_);
   apply_ctrl_theme(btn_list_font_);
   apply_ctrl_theme(btn_ui_font_);
   apply_ctrl_theme(slider_interval_);
@@ -200,14 +218,22 @@ void OptionsDialog::InitializeDialog(HWND hwnd) {
   else if (settings_.language == AppLanguage::kEnglish) lang_sel = 2;
   SendMessageW(combo_lang_, CB_SETCURSEL, lang_sel, 0);
 
-  // 2. Fonts
+  // 2. Theme
+  SendMessageW(combo_theme_, CB_ADDSTRING, 0,
+               reinterpret_cast<LPARAM>(LanguageManager::GetString(StringId::kThemeLight)));
+  SendMessageW(combo_theme_, CB_ADDSTRING, 0,
+               reinterpret_cast<LPARAM>(LanguageManager::GetString(StringId::kThemeDark)));
+  SendMessageW(combo_theme_, CB_SETCURSEL,
+               settings_.theme == AppTheme::kDark ? 1 : 0, 0);
+
+  // 3. Fonts
   std::wstring list_font_disp = settings_.list_font_name + L", " + std::to_wstring(settings_.list_font_size) + L"pt";
   SetWindowTextW(lbl_list_font_val_, list_font_disp.c_str());
 
   std::wstring ui_font_disp = settings_.ui_font_name + L", " + std::to_wstring(settings_.ui_font_size) + L"pt";
   SetWindowTextW(lbl_ui_font_val_, ui_font_disp.c_str());
 
-  // 3. Refresh Interval Trackbar (0-300 seconds)
+  // 4. Refresh Interval Trackbar (0-300 seconds)
   SendMessageW(slider_interval_, TBM_SETRANGE, TRUE, MAKELPARAM(0, 300));
   SendMessageW(slider_interval_, TBM_SETTICFREQ, 30, 0);
   int cur_interval = std::clamp(settings_.refresh_interval_seconds, 0, 300);
@@ -221,6 +247,9 @@ void OptionsDialog::InitializeDialog(HWND hwnd) {
 
   // 6. Excluded Processes ListView
   ListView_SetExtendedListViewStyle(list_excluded_, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
+  ListView_SetBkColor(list_excluded_, palette.control_background);
+  ListView_SetTextBkColor(list_excluded_, palette.control_background);
+  ListView_SetTextColor(list_excluded_, palette.text_primary);
   LVCOLUMNW lvc = {0};
   lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
   lvc.iSubItem = 0;
@@ -239,6 +268,7 @@ void OptionsDialog::InitializeDialog(HWND hwnd) {
   if (!settings_.excluded_processes.empty()) {
     ListView_SetItemState(list_excluded_, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
   }
+  ThemeManager::ApplyListViewHeaderTheme(list_excluded_, applied_theme_);
 }
 
 void OptionsDialog::UpdateIntervalLabel(int seconds) {
@@ -309,7 +339,7 @@ void OptionsDialog::OnChangeUiFont() {
 
 void OptionsDialog::OnAddExcludedProcess() {
   std::wstring name;
-  if (PromptAddExcludedProcess(dlg_hwnd_, settings_.theme, &name)) {
+  if (PromptAddExcludedProcess(dlg_hwnd_, applied_theme_, ui_font_, &name)) {
     // Check if already in list
     int count = ListView_GetItemCount(list_excluded_);
     for (int i = 0; i < count; ++i) {
@@ -350,7 +380,9 @@ void OptionsDialog::OnSave() {
   else if (lang_sel == 2) settings_.language = AppLanguage::kEnglish;
   else settings_.language = AppLanguage::kAuto;
 
-  settings_.theme = AppTheme::kLight;
+  int theme_sel = static_cast<int>(
+      SendMessageW(combo_theme_, CB_GETCURSEL, 0, 0));
+  settings_.theme = theme_sel == 1 ? AppTheme::kDark : AppTheme::kLight;
 
   int interval = static_cast<int>(SendMessageW(slider_interval_, TBM_GETPOS, 0, 0));
   settings_.refresh_interval_seconds = std::clamp(interval, 0, 300);
@@ -426,14 +458,14 @@ LRESULT OptionsDialog::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM 
     }
 
     case WM_CTLCOLORDLG: {
-      const auto& palette = ThemeManager::GetPalette(settings_.theme);
+      const auto& palette = ThemeManager::GetPalette(applied_theme_);
       return reinterpret_cast<INT_PTR>(palette.window_brush);
     }
 
     case WM_CTLCOLORSTATIC:
     case WM_CTLCOLORBTN: {
       HDC hdc = reinterpret_cast<HDC>(wparam);
-      const auto& palette = ThemeManager::GetPalette(settings_.theme);
+      const auto& palette = ThemeManager::GetPalette(applied_theme_);
       SetTextColor(hdc, palette.text_primary);
       SetBkMode(hdc, TRANSPARENT);
       return reinterpret_cast<INT_PTR>(palette.window_brush);
@@ -442,7 +474,7 @@ LRESULT OptionsDialog::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM 
     case WM_CTLCOLOREDIT:
     case WM_CTLCOLORLISTBOX: {
       HDC hdc = reinterpret_cast<HDC>(wparam);
-      const auto& palette = ThemeManager::GetPalette(settings_.theme);
+      const auto& palette = ThemeManager::GetPalette(applied_theme_);
       SetTextColor(hdc, palette.text_primary);
       SetBkColor(hdc, palette.control_background);
       return reinterpret_cast<INT_PTR>(palette.control_brush);

@@ -250,6 +250,7 @@ enum class StringId {
   kMenuServiceGoToProcess,
   kMenuProcessGoToService,
   kStatusServiceCounts,
+  kMsgNoRelatedServices,
 };
 
 class LanguageManager {

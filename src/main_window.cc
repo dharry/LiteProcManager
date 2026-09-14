@@ -57,6 +57,79 @@ struct ServiceSnapshotMessage {
   std::vector<std::shared_ptr<ServiceItem>> services;
 };
 
+struct AboutDialogContext {
+  AppTheme theme{AppTheme::kLight};
+  HFONT ui_font{nullptr};
+  std::wstring title;
+  std::wstring app_name;
+  std::wstring details;
+};
+
+INT_PTR CALLBACK AboutDialogProc(HWND hwnd, UINT msg, WPARAM wparam,
+                                 LPARAM lparam) {
+  auto* context = reinterpret_cast<AboutDialogContext*>(
+      GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+
+  switch (msg) {
+    case WM_INITDIALOG: {
+      context = reinterpret_cast<AboutDialogContext*>(lparam);
+      SetWindowLongPtrW(hwnd, GWLP_USERDATA,
+                        reinterpret_cast<LONG_PTR>(context));
+
+      SetWindowTextW(hwnd, context->title.c_str());
+      SetDlgItemTextW(hwnd, IDC_ABOUT_APP_NAME, context->app_name.c_str());
+      SetDlgItemTextW(hwnd, IDC_ABOUT_DETAILS, context->details.c_str());
+      SetDlgItemTextW(hwnd, IDOK,
+                      LanguageManager::GetString(StringId::kBtnOk));
+
+      HICON app_icon = LoadIconW(GetModuleHandleW(nullptr),
+                                 MAKEINTRESOURCEW(IDI_APP_ICON));
+      SendDlgItemMessageW(hwnd, IDC_ABOUT_ICON, STM_SETICON,
+                          reinterpret_cast<WPARAM>(app_icon), 0);
+      SendMessageW(hwnd, WM_SETICON, ICON_SMALL,
+                   reinterpret_cast<LPARAM>(app_icon));
+
+      ThemeManager::ApplyTheme(hwnd, context->theme);
+      ThemeManager::ApplyFontToWindowTree(hwnd, context->ui_font);
+
+      const bool is_dark = context->theme == AppTheme::kDark;
+      SetWindowTheme(GetDlgItem(hwnd, IDOK),
+                     is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
+      return TRUE;
+    }
+
+    case WM_COMMAND:
+      if (LOWORD(wparam) == IDOK || LOWORD(wparam) == IDCANCEL) {
+        EndDialog(hwnd, LOWORD(wparam));
+        return TRUE;
+      }
+      break;
+
+    case WM_CLOSE:
+      EndDialog(hwnd, IDCANCEL);
+      return TRUE;
+
+    case WM_CTLCOLORDLG:
+      if (context) {
+        return reinterpret_cast<INT_PTR>(
+            ThemeManager::GetPalette(context->theme).window_brush);
+      }
+      break;
+
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLORBTN:
+      if (context) {
+        HDC hdc = reinterpret_cast<HDC>(wparam);
+        const auto& palette = ThemeManager::GetPalette(context->theme);
+        SetTextColor(hdc, palette.text_primary);
+        SetBkMode(hdc, TRANSPARENT);
+        return reinterpret_cast<INT_PTR>(palette.window_brush);
+      }
+      break;
+  }
+  return FALSE;
+}
+
 HRESULT OpenFolderAndSelectFile(const std::wstring& file_path) {
   PIDLIST_ABSOLUTE item_pidl = nullptr;
   HRESULT result = SHParseDisplayName(
@@ -299,6 +372,147 @@ LRESULT CALLBACK StatusBarSubclassProc(
   return DefSubclassProc(hwnd, msg, wparam, lparam);
 }
 
+constexpr UINT_PTR kTabControlSubclassId = 0x9004;
+
+LRESULT CALLBACK TabControlSubclassProc(
+    HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam,
+    UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+  auto* self = reinterpret_cast<MainWindow*>(dwRefData);
+
+  if (self && self->IsDarkMode()) {
+    switch (msg) {
+      case WM_ERASEBKGND:
+        return TRUE;
+
+      case WM_PAINT: {
+        PAINTSTRUCT ps{};
+        HDC hdc = BeginPaint(hwnd, &ps);
+        RECT client_rect{};
+        GetClientRect(hwnd, &client_rect);
+        int width = client_rect.right - client_rect.left;
+        int height = client_rect.bottom - client_rect.top;
+        if (width <= 0 || height <= 0) {
+          EndPaint(hwnd, &ps);
+          return 0;
+        }
+
+        const auto& palette = ThemeManager::GetPalette(AppTheme::kDark);
+        HDC memory_dc = CreateCompatibleDC(hdc);
+        HBITMAP bitmap = CreateCompatibleBitmap(hdc, width, height);
+        HBITMAP old_bitmap =
+            static_cast<HBITMAP>(SelectObject(memory_dc, bitmap));
+        FillRect(memory_dc, &client_rect, palette.window_brush);
+
+        HFONT font = reinterpret_cast<HFONT>(
+            SendMessageW(hwnd, WM_GETFONT, 0, 0));
+        if (!font) {
+          font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+        }
+        HFONT old_font = static_cast<HFONT>(SelectObject(memory_dc, font));
+        SetBkMode(memory_dc, TRANSPARENT);
+
+        int selected_index = TabCtrl_GetCurSel(hwnd);
+        int item_count = TabCtrl_GetItemCount(hwnd);
+        for (int index = 0; index < item_count; ++index) {
+          RECT item_rect{};
+          if (!TabCtrl_GetItemRect(hwnd, index, &item_rect)) continue;
+
+          bool selected = index == selected_index;
+          FillRect(memory_dc, &item_rect,
+                   selected ? palette.control_brush : palette.window_brush);
+
+          wchar_t item_text[128] = {0};
+          TCITEMW item{};
+          item.mask = TCIF_TEXT;
+          item.pszText = item_text;
+          item.cchTextMax = static_cast<int>(std::size(item_text));
+          if (TabCtrl_GetItem(hwnd, index, &item)) {
+            RECT text_rect = item_rect;
+            text_rect.left += 4;
+            text_rect.right -= 4;
+            SetTextColor(memory_dc,
+                         selected ? palette.text_primary : palette.header_text);
+            DrawTextW(memory_dc, item_text, -1, &text_rect,
+                      DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS |
+                          DT_NOPREFIX);
+          }
+
+          HBRUSH border_brush = CreateSolidBrush(
+              selected ? palette.focus_border : palette.border_color);
+          FrameRect(memory_dc, &item_rect, border_brush);
+          DeleteObject(border_brush);
+        }
+
+        SelectObject(memory_dc, old_font);
+        BitBlt(hdc, 0, 0, width, height, memory_dc, 0, 0, SRCCOPY);
+        SelectObject(memory_dc, old_bitmap);
+        DeleteObject(bitmap);
+        DeleteDC(memory_dc);
+        EndPaint(hwnd, &ps);
+        return 0;
+      }
+    }
+  }
+
+  if (msg == WM_NCDESTROY) {
+    RemoveWindowSubclass(hwnd, TabControlSubclassProc, uIdSubclass);
+  }
+  return DefSubclassProc(hwnd, msg, wparam, lparam);
+}
+
+constexpr UINT_PTR kSearchEditSubclassId = 0x9005;
+
+LRESULT CALLBACK SearchEditSubclassProc(
+    HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam,
+    UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+  auto* self = reinterpret_cast<MainWindow*>(dwRefData);
+
+  if (msg == WM_PAINT) {
+    LRESULT result = DefSubclassProc(hwnd, msg, wparam, lparam);
+    if (self && GetWindowTextLengthW(hwnd) == 0) {
+      HDC hdc = GetDC(hwnd);
+      if (hdc) {
+        RECT text_rect{};
+        GetClientRect(hwnd, &text_rect);
+        text_rect.left += 5;
+        text_rect.right -= 5;
+
+        AppTheme theme = self->IsDarkMode() ? AppTheme::kDark
+                                            : AppTheme::kLight;
+        const auto& palette = ThemeManager::GetPalette(theme);
+        HFONT font = reinterpret_cast<HFONT>(
+            SendMessageW(hwnd, WM_GETFONT, 0, 0));
+        if (!font) {
+          font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+        }
+        HFONT old_font = static_cast<HFONT>(SelectObject(hdc, font));
+        SetBkMode(hdc, TRANSPARENT);
+        SetTextColor(hdc, palette.placeholder_text);
+        DrawTextW(hdc,
+                  LanguageManager::GetString(StringId::kSearchPlaceholder),
+                  -1, &text_rect,
+                  DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS |
+                      DT_NOPREFIX);
+        SelectObject(hdc, old_font);
+        ReleaseDC(hwnd, hdc);
+      }
+    }
+    return result;
+  }
+
+  if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_SETTEXT ||
+      msg == WM_THEMECHANGED) {
+    LRESULT result = DefSubclassProc(hwnd, msg, wparam, lparam);
+    InvalidateRect(hwnd, nullptr, TRUE);
+    return result;
+  }
+
+  if (msg == WM_NCDESTROY) {
+    RemoveWindowSubclass(hwnd, SearchEditSubclassProc, uIdSubclass);
+  }
+  return DefSubclassProc(hwnd, msg, wparam, lparam);
+}
+
 constexpr UINT_PTR kListViewSubclassId = 0x9003;
 
 LRESULT CALLBACK ListViewSubclassProc(
@@ -445,7 +659,6 @@ ProcessSnapshotOptions BuildProcessSnapshotOptions(const AppSettings& settings) 
 }  // namespace
 
 MainWindow::MainWindow() : settings_(AppSettings::Load()) {
-  settings_.theme = AppTheme::kLight;
   LanguageManager::Initialize(settings_.language);
   is_elevated_ = IsCurrentProcessElevated();
   search_active_brush_ = CreateSolidBrush(RGB(253, 253, 223));  // #FDFDDF
@@ -501,6 +714,9 @@ bool MainWindow::Create(HINSTANCE instance, int cmd_show) {
   InitCommonControlsEx(&iccex);
 
   ThemeManager::Initialize();
+  // The preferred app mode must be selected before creating native controls;
+  // otherwise menus and scroll bars can retain their light appearance.
+  ThemeManager::SetPreferredAppTheme(settings_.theme);
 
   WNDCLASSEXW wc = {0};
   wc.cbSize = sizeof(WNDCLASSEXW);
@@ -689,7 +905,9 @@ void MainWindow::InitializeComponents() {
       10, 9, 280, 24, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SEARCH_EDIT)), instance_, nullptr);
   SendMessageW(search_edit_, WM_SETFONT, reinterpret_cast<WPARAM>(hfont), TRUE);
   SendMessageW(search_edit_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(4, 4));
-  SendMessageW(search_edit_, EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(LanguageManager::GetString(StringId::kSearchPlaceholder)));
+  SetWindowSubclass(search_edit_, SearchEditSubclassProc,
+                    kSearchEditSubclassId,
+                    reinterpret_cast<DWORD_PTR>(this));
   SetControlTooltip(search_edit_, LanguageManager::GetString(StringId::kTooltipQuickFilter));
 
   interval_combo_ = CreateWindowExW(
@@ -775,6 +993,7 @@ void MainWindow::InitializeComponents() {
       0, 38, settings_.window_width, 26,
       hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_MAIN_TAB)), instance_, nullptr);
   SendMessageW(tab_control_, WM_SETFONT, reinterpret_cast<WPARAM>(hfont), TRUE);
+  SendMessageW(tab_control_, TCM_SETMINTABWIDTH, 0, 88);
 
   TCITEMW tie = {0};
   tie.mask = TCIF_TEXT;
@@ -785,6 +1004,9 @@ void MainWindow::InitializeComponents() {
   std::wstring tab_svc = LanguageManager::GetString(StringId::kTabServices);
   tie.pszText = const_cast<LPWSTR>(tab_svc.c_str());
   TabCtrl_InsertItem(tab_control_, 1, &tie);
+  SetWindowSubclass(tab_control_, TabControlSubclassProc,
+                    kTabControlSubclassId,
+                    reinterpret_cast<DWORD_PTR>(this));
 
   // 3c. Service ListView
   service_list_view_ = CreateWindowExW(
@@ -1204,8 +1426,19 @@ void MainWindow::FlushPendingFilterSettingsSave() {
     return;
   }
 
-  settings_.SaveSettings();
+  SaveSettingsPreservingPendingTheme();
   filter_settings_save_pending_ = false;
+}
+
+void MainWindow::SaveSettingsPreservingPendingTheme() const {
+  if (!pending_theme_change_.has_value()) {
+    settings_.SaveSettings();
+    return;
+  }
+
+  AppSettings persisted_settings = settings_;
+  persisted_settings.theme = pending_theme_change_.value();
+  persisted_settings.SaveSettings();
 }
 
 void MainWindow::SortItems() {
@@ -1824,7 +2057,7 @@ void MainWindow::ExportSelectedAsTsv() {
 }
 
 void MainWindow::OpenMonitorSettings() {
-  MonitorDialog dlg(hwnd_, settings_.monitor_rules, settings_.theme);
+  MonitorDialog dlg(hwnd_, settings_.monitor_rules, settings_.theme, ui_font_);
   if (dlg.Show()) {
     settings_.monitor_rules = dlg.GetRules();
     monitor_service_.SetRules(settings_.monitor_rules);
@@ -1838,15 +2071,38 @@ void MainWindow::ApplyTheme() {
   const auto& palette = ThemeManager::GetPalette(settings_.theme);
   bool is_dark = (settings_.theme == AppTheme::kDark);
 
-  SetWindowTheme(listview_hwnd_, is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
-  SetWindowTheme(treeview_hwnd_, is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
-  SetWindowTheme(statusbar_hwnd_, is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
-  SetWindowTheme(search_edit_, is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
-  SetWindowTheme(interval_combo_, is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
-  SetWindowTheme(filter_col_combo_, is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
-  SetWindowTheme(filter_op_combo_, is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
-  SetWindowTheme(filter_val_edit_, is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
-  SetWindowTheme(service_list_view_, is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
+  auto apply_control_theme = [&](HWND control) {
+    if (control) {
+      SetWindowTheme(control,
+                     is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
+    }
+  };
+  auto apply_combo_theme = [&](HWND control) {
+    if (control) {
+      SetWindowTheme(control,
+                     is_dark ? L"DarkMode_CFD" : L"Explorer", nullptr);
+    }
+  };
+  apply_control_theme(listview_hwnd_);
+  apply_control_theme(treeview_hwnd_);
+  apply_control_theme(statusbar_hwnd_);
+  apply_control_theme(search_edit_);
+  apply_combo_theme(interval_combo_);
+  apply_combo_theme(filter_col_combo_);
+  apply_combo_theme(filter_op_combo_);
+  apply_control_theme(filter_val_edit_);
+  apply_control_theme(filter_clear_btn_);
+  apply_control_theme(tab_control_);
+  apply_control_theme(service_list_view_);
+  apply_control_theme(tooltip_hwnd_);
+  apply_control_theme(btn_tree_);
+  apply_control_theme(btn_columns_);
+  apply_control_theme(btn_restart_admin_);
+  apply_control_theme(btn_topmost_);
+  apply_control_theme(btn_options_);
+  apply_control_theme(btn_monitor_);
+  apply_control_theme(btn_refresh_);
+  apply_control_theme(btn_endtask_);
 
   // Set ListView theme colors
   ListView_SetBkColor(listview_hwnd_, palette.surface_background);
@@ -1867,10 +2123,9 @@ void MainWindow::ApplyTheme() {
 
   ThemeManager::ApplyListViewHeaderTheme(listview_hwnd_, settings_.theme, sort_column_index_, sort_ascending_);
 
-  InvalidateRect(listview_hwnd_, nullptr, TRUE);
-  if (service_list_view_) InvalidateRect(service_list_view_, nullptr, TRUE);
-  InvalidateRect(treeview_hwnd_, nullptr, TRUE);
-  InvalidateRect(hwnd_, nullptr, TRUE);
+  DrawMenuBar(hwnd_);
+  RedrawWindow(hwnd_, nullptr, nullptr,
+               RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
 }
 
 void MainWindow::RestartApplication() {
@@ -1968,39 +2223,65 @@ bool MainWindow::IsCurrentProcessElevated() {
 }
 
 void MainWindow::OpenOptionsDialog() {
-  OptionsDialog dlg(hwnd_, settings_);
+  AppSettings dialog_settings = settings_;
+  if (pending_theme_change_.has_value()) {
+    dialog_settings.theme = pending_theme_change_.value();
+  }
+
+  const AppTheme active_theme = settings_.theme;
+  OptionsDialog dlg(hwnd_, dialog_settings, active_theme, ui_font_);
   if (dlg.Show()) {
     settings_ = dlg.GetSettings();
-    settings_.theme = AppTheme::kLight;
-    settings_.SaveSettings();
+    const AppTheme requested_theme = settings_.theme;
+    const bool theme_changed = requested_theme != active_theme;
+    if (theme_changed) {
+      pending_theme_change_ = requested_theme;
+      settings_.theme = active_theme;
+    } else {
+      pending_theme_change_.reset();
+    }
+    SaveSettingsPreservingPendingTheme();
 
     UpdateLanguageAndUI();
     UpdateTimerInterval();
+
+    if (theme_changed &&
+        MessageBoxW(hwnd_,
+                    LanguageManager::GetString(StringId::kConfirmRestartTheme),
+                    LanguageManager::GetString(StringId::kRestartNoticeTitle),
+                    MB_YESNO | MB_ICONQUESTION) == IDYES) {
+      RestartApplication();
+    }
   }
 }
 
 void MainWindow::ShowAboutDialog() {
-  std::wstring title = LanguageManager::GetString(StringId::kAboutTitle);
-  std::wstring app_name = LanguageManager::GetString(StringId::kAboutAppName);
-
+  AboutDialogContext context;
+  context.theme = settings_.theme;
+  context.ui_font = ui_font_;
+  context.title = LanguageManager::GetString(StringId::kAboutTitle);
+  context.app_name = LanguageManager::GetString(StringId::kAboutAppName);
   std::wostringstream oss;
-  oss << app_name << L"  v" << APP_VERSION_STR << L"\n\n";
-  {
-    oss << L"Version: " << APP_VERSION_STR << L"\n";
-    oss << L"Architecture: x64 (Native C++)\n";
-    oss << L"Privilege: " << (is_elevated_ ? L"Administrator" : L"Standard User") << L"\n\n";
-    oss << L"High-performance Windows LiteProcManager\n";
-    oss << L"Authors: Akifumi KISHI";
-  }
+  oss << L"Version: " << APP_VERSION_STR << L"\r\n";
+  oss << L"Architecture: x64 (Native C++)\r\n";
+  oss << L"Privilege: "
+      << (is_elevated_ ? L"Administrator" : L"Standard User") << L"\r\n\r\n";
+  oss << L"High-performance Windows LiteProcManager\r\n";
+  oss << L"Authors: Akifumi KISHI";
+  context.details = oss.str();
 
-  MessageBoxW(hwnd_, oss.str().c_str(), title.c_str(), MB_OK | MB_ICONINFORMATION);
+  DialogBoxParamW(GetModuleHandleW(nullptr),
+                  MAKEINTRESOURCEW(IDD_ABOUT_DIALOG), hwnd_,
+                  AboutDialogProc, reinterpret_cast<LPARAM>(&context));
 }
 
 void MainWindow::AddSelectedProcessToMonitor() {
   auto proc = GetSelectedProcess();
   if (!proc) return;
 
-  if (MonitorDialog::ShowAddRuleForProcess(hwnd_, proc->name, proc->process_id, &settings_.monitor_rules, settings_.theme)) {
+  if (MonitorDialog::ShowAddRuleForProcess(
+          hwnd_, proc->name, proc->process_id, &settings_.monitor_rules,
+          settings_.theme, ui_font_)) {
     monitor_service_.SetRules(settings_.monitor_rules);
     settings_.SaveMonitorRules();
   }
@@ -2079,7 +2360,7 @@ void MainWindow::HideColumnByIndex(int visible_col_index) {
 
   size_t target_idx = visible_indices[visible_col_index];
   settings_.columns[target_idx].visible = false;
-  settings_.SaveSettings();
+  SaveSettingsPreservingPendingTheme();
 
   if (sort_column_index_ == visible_col_index) {
     sort_column_index_ = -1;
@@ -2092,10 +2373,10 @@ void MainWindow::HideColumnByIndex(int visible_col_index) {
 }
 
 void MainWindow::OpenColumnSelectorDialog() {
-  ColumnSelectorDialog dlg(hwnd_, settings_.columns, settings_.theme);
+  ColumnSelectorDialog dlg(hwnd_, settings_.columns, settings_.theme, ui_font_);
   if (dlg.Show()) {
     settings_.columns = dlg.GetColumns();
-    settings_.SaveSettings();
+    SaveSettingsPreservingPendingTheme();
     RebuildListViewColumns();
     UpdateListView();
   }
@@ -2211,8 +2492,9 @@ void MainWindow::UpdateLanguageAndUI() {
   // UI Font applied to toolbar, inputs, buttons, statusbar
   SendMessageW(search_edit_, WM_SETFONT, ui_font_param, TRUE);
   SendMessageW(interval_combo_, WM_SETFONT, ui_font_param, TRUE);
+  SendMessageW(tab_control_, WM_SETFONT, ui_font_param, TRUE);
 
-  SendMessageW(search_edit_, EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(LanguageManager::GetString(StringId::kSearchPlaceholder)));
+  InvalidateRect(search_edit_, nullptr, TRUE);
 
   // Re-populate interval combo box with localized strings and select current interval
   PopulateIntervalComboBox();
@@ -2224,6 +2506,7 @@ void MainWindow::UpdateLanguageAndUI() {
   SendMessageW(btn_monitor_, WM_SETFONT, ui_font_param, TRUE);
   SendMessageW(btn_refresh_, WM_SETFONT, ui_font_param, TRUE);
   SendMessageW(btn_endtask_, WM_SETFONT, ui_font_param, TRUE);
+  SendMessageW(btn_restart_admin_, WM_SETFONT, ui_font_param, TRUE);
   SendMessageW(statusbar_hwnd_, WM_SETFONT, ui_font_param, TRUE);
 
   // Condition filter controls localization and font
@@ -2263,10 +2546,15 @@ void MainWindow::UpdateLanguageAndUI() {
   // List Font (Mono preferred) applied to ListView, TreeView, and Column Header
   SendMessageW(listview_hwnd_, WM_SETFONT, list_font_param, TRUE);
   SendMessageW(treeview_hwnd_, WM_SETFONT, list_font_param, TRUE);
+  SendMessageW(service_list_view_, WM_SETFONT, list_font_param, TRUE);
 
   HWND header_hwnd = ListView_GetHeader(listview_hwnd_);
   if (header_hwnd) {
     SendMessageW(header_hwnd, WM_SETFONT, list_font_param, TRUE);
+  }
+  HWND service_header_hwnd = ListView_GetHeader(service_list_view_);
+  if (service_header_hwnd) {
+    SendMessageW(service_header_hwnd, WM_SETFONT, list_font_param, TRUE);
   }
 
   // Ensure ListView and TreeView use the real process icon image list
@@ -2507,6 +2795,7 @@ void MainWindow::OnTabChanged() {
 
   int sel = TabCtrl_GetCurSel(tab_control_);
   current_tab_ = (sel == 1) ? MainTab::kServices : MainTab::kProcesses;
+  InvalidateRect(tab_control_, nullptr, FALSE);
 
   RECT rc;
   GetClientRect(hwnd_, &rc);
@@ -2906,7 +3195,8 @@ void MainWindow::GoToProcessRelatedServices() {
     ListView_EnsureVisible(service_list_view_, found_idx, FALSE);
     SetFocus(service_list_view_);
   } else {
-    MessageBoxW(hwnd_, L"このプロセスに関連付けられたサービスは見つかりませんでした。",
+    MessageBoxW(hwnd_,
+                LanguageManager::GetString(StringId::kMsgNoRelatedServices),
                 LanguageManager::GetString(StringId::kTitleInfo), MB_OK | MB_ICONINFORMATION);
   }
 }
@@ -2956,7 +3246,8 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
           HMENU menu = GetMenu(hwnd);
           if (menu) {
             int count = GetMenuItemCount(menu);
-            HFONT hfont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+            HFONT hfont = ui_font_ ? ui_font_
+                                   : static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
             HFONT old_font = static_cast<HFONT>(SelectObject(hdc, hfont));
             SetTextColor(hdc, palette.text_primary);
             SetBkMode(hdc, TRANSPARENT);
@@ -3012,7 +3303,8 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
           HBRUSH bg_brush = is_hovered ? palette.control_brush : palette.window_brush;
           FillRect(uah_item->menuHeader.hdc, &uah_item->rcItem, bg_brush);
 
-          HFONT hfont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+          HFONT hfont = ui_font_ ? ui_font_
+                                 : static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
           HFONT old_font = static_cast<HFONT>(SelectObject(uah_item->menuHeader.hdc, hfont));
 
           SetTextColor(uah_item->menuHeader.hdc, palette.text_primary);
@@ -3095,7 +3387,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
           if (sec != CB_ERR) {
             settings_.refresh_interval_seconds = static_cast<int>(sec);
             UpdateTimerInterval();
-            settings_.Save();
+            SaveSettingsPreservingPendingTheme();
           }
         }
         return 0;
@@ -3517,6 +3809,14 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
       return reinterpret_cast<INT_PTR>(palette.control_brush);
     }
 
+    case WM_CTLCOLORLISTBOX: {
+      HDC hdc = reinterpret_cast<HDC>(wparam);
+      const auto& palette = ThemeManager::GetPalette(settings_.theme);
+      SetTextColor(hdc, palette.text_primary);
+      SetBkColor(hdc, palette.control_background);
+      return reinterpret_cast<INT_PTR>(palette.control_brush);
+    }
+
     case WM_CTLCOLORSTATIC:
     case WM_CTLCOLORBTN: {
       HDC hdc = reinterpret_cast<HDC>(wparam);
@@ -3556,6 +3856,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
       }
       if (pending_theme_change_.has_value()) {
         settings_.theme = pending_theme_change_.value();
+        pending_theme_change_.reset();
       }
       KillTimer(hwnd_, IDT_FILTER_SAVE_TIMER);
       filter_settings_save_pending_ = false;

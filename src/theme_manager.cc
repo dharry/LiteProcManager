@@ -16,6 +16,11 @@ PfnSetPreferredAppMode pfn_set_preferred_app_mode = nullptr;
 PfnAllowDarkModeForWindow pfn_allow_dark_mode_for_window = nullptr;
 PfnFlushMenuThemes pfn_flush_menu_themes = nullptr;
 
+BOOL CALLBACK ApplyFontToChildWindow(HWND hwnd, LPARAM lparam) {
+  SendMessageW(hwnd, WM_SETFONT, static_cast<WPARAM>(lparam), TRUE);
+  return TRUE;
+}
+
 void InitDarkModeApis() {
   HMODULE uxtheme = GetModuleHandleW(L"uxtheme.dll");
   if (!uxtheme) {
@@ -63,6 +68,8 @@ void ThemeManager::Initialize() {
   dark_palette_.header_background = RGB(36, 36, 36);
   dark_palette_.header_text = RGB(220, 220, 220);
   dark_palette_.grid_line_color = RGB(50, 50, 55);
+  dark_palette_.focus_border = RGB(154, 128, 255);
+  dark_palette_.placeholder_text = RGB(205, 205, 205);
 
   dark_palette_.window_brush = CreateSolidBrush(dark_palette_.window_background);
   dark_palette_.surface_brush = CreateSolidBrush(dark_palette_.surface_background);
@@ -85,6 +92,8 @@ void ThemeManager::Initialize() {
   light_palette_.header_background = RGB(240, 240, 240);
   light_palette_.header_text = RGB(40, 40, 40);
   light_palette_.grid_line_color = RGB(230, 230, 230);
+  light_palette_.focus_border = RGB(0, 103, 192);
+  light_palette_.placeholder_text = RGB(105, 105, 105);
 
   light_palette_.window_brush = CreateSolidBrush(light_palette_.window_background);
   light_palette_.surface_brush = CreateSolidBrush(light_palette_.surface_background);
@@ -115,22 +124,26 @@ const ColorPalette& ThemeManager::GetPalette(AppTheme theme) {
   return (theme == AppTheme::kDark) ? dark_palette_ : light_palette_;
 }
 
+void ThemeManager::SetPreferredAppTheme(AppTheme theme) {
+  if (!initialized_) Initialize();
+
+  BOOL dark_mode = (theme == AppTheme::kDark) ? TRUE : FALSE;
+  if (pfn_set_preferred_app_mode) {
+    pfn_set_preferred_app_mode(dark_mode ? 2 : 3);  // 2 = ForceDark, 3 = ForceLight
+  }
+  if (pfn_flush_menu_themes) {
+    pfn_flush_menu_themes();
+  }
+}
+
 void ThemeManager::ApplyTheme(HWND hwnd, AppTheme theme) {
   if (!initialized_) Initialize();
 
   BOOL dark_mode = (theme == AppTheme::kDark) ? TRUE : FALSE;
-
-  // Set UxTheme PreferredAppMode
-  if (pfn_set_preferred_app_mode) {
-    pfn_set_preferred_app_mode(dark_mode ? 2 : 3);  // 2 = ForceDark, 3 = ForceLight
-  }
+  SetPreferredAppTheme(theme);
 
   if (pfn_allow_dark_mode_for_window) {
     pfn_allow_dark_mode_for_window(hwnd, dark_mode);
-  }
-
-  if (pfn_flush_menu_themes) {
-    pfn_flush_menu_themes();
   }
 
   // DWMWA_USE_IMMERSIVE_DARK_MODE (attribute value 20 on Windows 10 build 18985+ / Windows 11)
@@ -144,6 +157,14 @@ void ThemeManager::ApplyTheme(HWND hwnd, AppTheme theme) {
   // Update window class brush
   const auto& palette = GetPalette(theme);
   SetClassLongPtrW(hwnd, GCLP_HBRBACKGROUND, reinterpret_cast<LONG_PTR>(palette.window_brush));
+}
+
+void ThemeManager::ApplyFontToWindowTree(HWND hwnd, HFONT font) {
+  if (!hwnd || !font) return;
+
+  const LPARAM font_param = reinterpret_cast<LPARAM>(font);
+  SendMessageW(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+  EnumChildWindows(hwnd, ApplyFontToChildWindow, font_param);
 }
 
 namespace {

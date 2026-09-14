@@ -322,6 +322,7 @@ UINT StringIdToResourceId(StringId id) {
     case StringId::kMenuServiceGoToProcess: return IDS_MENU_SERVICE_GO_TO_PROCESS;
     case StringId::kMenuProcessGoToService: return IDS_MENU_PROCESS_GO_TO_SERVICE;
     case StringId::kStatusServiceCounts: return IDS_STATUS_SERVICE_COUNTS;
+    case StringId::kMsgNoRelatedServices: return IDS_MSG_NO_RELATED_SERVICES;
   }
   return 0;
 }

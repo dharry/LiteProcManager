@@ -781,7 +781,8 @@ TEST_CLASS(SettingsAndMonitorTests) {
     DeleteFileW(test_rules_path.c_str());
 
     AppSettings settings;
-    settings.theme = AppTheme::kLight;
+    Assert::AreEqual(AppTheme::kLight, settings.theme);
+    settings.theme = AppTheme::kDark;
     settings.list_font_name = L"Segoe UI";
     settings.list_font_size = 10;
     settings.ui_font_name = L"Meiryo";
@@ -808,7 +809,7 @@ TEST_CLASS(SettingsAndMonitorTests) {
     settings.SaveMonitorRulesTo(test_rules_path);
 
     AppSettings loaded = AppSettings::LoadFrom(test_settings_path, test_rules_path);
-    Assert::AreEqual(AppTheme::kLight, loaded.theme);
+    Assert::AreEqual(AppTheme::kDark, loaded.theme);
     Assert::AreEqual(std::wstring(L"Segoe UI"), loaded.list_font_name);
     Assert::AreEqual(10, loaded.list_font_size);
     Assert::AreEqual(std::wstring(L"Meiryo"), loaded.ui_font_name);
@@ -892,6 +893,8 @@ TEST_CLASS(LanguageManagerTests) {
     Assert::AreEqual(std::wstring(L"🔍 検索:"), std::wstring(LanguageManager::GetString(StringId::kLabelSearch)));
     Assert::AreEqual(std::wstring(L"更新頻度:"), std::wstring(LanguageManager::GetString(StringId::kLabelInterval)));
     Assert::AreEqual(std::wstring(L"一時停止"), std::wstring(LanguageManager::GetString(StringId::kIntervalPause)));
+    Assert::AreEqual(std::wstring(L"ライト (Light)"), std::wstring(LanguageManager::GetString(StringId::kThemeLight)));
+    Assert::AreEqual(std::wstring(L"ダーク (Dark)"), std::wstring(LanguageManager::GetString(StringId::kThemeDark)));
     Assert::AreEqual(std::wstring(L"メモリ (ワーキングセット)"), LanguageManager::GetColumnHeaderText(ProcessColumnId::kWorkingSet));
     Assert::AreEqual(std::wstring(L"含む"), std::wstring(LanguageManager::GetString(StringId::kOpContains)));
     Assert::AreEqual(std::wstring(L"LiteProcManagerを終了しますか？"), std::wstring(LanguageManager::GetString(StringId::kMsgConfirmExit)));
@@ -907,6 +910,11 @@ TEST_CLASS(LanguageManagerTests) {
     Assert::AreEqual(std::wstring(L"TSV ファイル (*.tsv)"),
                      std::wstring(LanguageManager::GetString(
                          StringId::kFileFilterTsv)));
+    Assert::AreEqual(
+        std::wstring(
+            L"このプロセスに関連付けられたサービスは見つかりませんでした。"),
+        std::wstring(LanguageManager::GetString(
+            StringId::kMsgNoRelatedServices)));
 
     LanguageManager::SetLanguage(AppLanguage::kEnglish);
     Assert::IsFalse(LanguageManager::IsJapanese());
@@ -945,7 +953,13 @@ TEST_CLASS(LanguageManagerTests) {
     Assert::AreEqual(std::wstring(L"🔍 Search:"), std::wstring(LanguageManager::GetString(StringId::kLabelSearch)));
     Assert::AreEqual(std::wstring(L"Interval:"), std::wstring(LanguageManager::GetString(StringId::kLabelInterval)));
     Assert::AreEqual(std::wstring(L"Pause"), std::wstring(LanguageManager::GetString(StringId::kIntervalPause)));
+    Assert::AreEqual(std::wstring(L"Light"), std::wstring(LanguageManager::GetString(StringId::kThemeLight)));
+    Assert::AreEqual(std::wstring(L"Dark"), std::wstring(LanguageManager::GetString(StringId::kThemeDark)));
     Assert::AreEqual(std::wstring(L"sec"), std::wstring(LanguageManager::GetString(StringId::kSecondsUnit)));
+    Assert::AreEqual(
+        std::wstring(L"No services associated with this process were found."),
+        std::wstring(LanguageManager::GetString(
+            StringId::kMsgNoRelatedServices)));
   }
 
   TEST_METHOD(LanguageManager_AutoDetect) {

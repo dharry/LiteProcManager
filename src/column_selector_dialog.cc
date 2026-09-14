@@ -14,8 +14,12 @@
 namespace lite_proc_manager {
 
 ColumnSelectorDialog::ColumnSelectorDialog(
-    HWND parent_hwnd, const std::vector<ProcessColumnInfo>& columns, AppTheme theme)
-    : parent_hwnd_(parent_hwnd), columns_(columns), theme_(theme) {}
+    HWND parent_hwnd, const std::vector<ProcessColumnInfo>& columns,
+    AppTheme theme, HFONT ui_font)
+    : parent_hwnd_(parent_hwnd),
+      columns_(columns),
+      theme_(theme),
+      ui_font_(ui_font) {}
 
 ColumnSelectorDialog::~ColumnSelectorDialog() = default;
 
@@ -37,6 +41,7 @@ INT_PTR CALLBACK ColumnSelectorDialog::DialogProc(HWND hwnd, UINT msg, WPARAM wp
     // Apply Title & Translations
     SetWindowTextW(hwnd, LanguageManager::GetString(StringId::kDlgColumnSelectorTitle));
     ThemeManager::ApplyTheme(hwnd, self->theme_);
+    ThemeManager::ApplyFontToWindowTree(hwnd, self->ui_font_);
 
     SetDlgItemTextW(hwnd, IDC_COL_INSTRUCTION, LanguageManager::GetString(StringId::kSelectColumnsInstruction));
     SetDlgItemTextW(hwnd, IDC_COL_BTN_MOVE_UP, LanguageManager::GetString(StringId::kBtnMoveUp));
@@ -49,7 +54,14 @@ INT_PTR CALLBACK ColumnSelectorDialog::DialogProc(HWND hwnd, UINT msg, WPARAM wp
     // Setup ListView
     self->listbox_hwnd_ = GetDlgItem(hwnd, IDC_COL_LIST);
     ListView_SetExtendedListViewStyle(self->listbox_hwnd_, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT);
-    SetWindowTheme(self->listbox_hwnd_, L"Explorer", nullptr);
+    SetWindowTheme(self->listbox_hwnd_,
+                   self->theme_ == AppTheme::kDark ? L"DarkMode_Explorer"
+                                                   : L"Explorer",
+                   nullptr);
+    const auto& palette = ThemeManager::GetPalette(self->theme_);
+    ListView_SetBkColor(self->listbox_hwnd_, palette.control_background);
+    ListView_SetTextBkColor(self->listbox_hwnd_, palette.control_background);
+    ListView_SetTextColor(self->listbox_hwnd_, palette.text_primary);
 
     LVCOLUMNW lvc = {0};
     lvc.mask = LVCF_WIDTH;

@@ -20,6 +20,7 @@ struct EditDialogContext {
   bool is_new{true};
   bool confirmed{false};
   AppTheme theme{AppTheme::kDark};
+  HFONT ui_font{nullptr};
   HWND hwnd_name{nullptr};
   HWND hwnd_target_type{nullptr};
   HWND hwnd_match_type{nullptr};
@@ -43,10 +44,14 @@ LRESULT CALLBACK RuleEditDialogProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
       SetWindowTextW(hwnd, ctx->is_new ? LanguageManager::GetString(StringId::kRuleEditTitleAdd)
                                        : LanguageManager::GetString(StringId::kRuleEditTitleEdit));
       ThemeManager::ApplyTheme(hwnd, ctx->theme);
+      ThemeManager::ApplyFontToWindowTree(hwnd, ctx->ui_font);
 
       bool is_dark = (ctx->theme == AppTheme::kDark);
       auto apply_ctrl_theme = [&](HWND ctrl) {
         if (ctrl) SetWindowTheme(ctrl, is_dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
+      };
+      auto apply_combo_theme = [&](HWND ctrl) {
+        if (ctrl) SetWindowTheme(ctrl, is_dark ? L"DarkMode_CFD" : L"Explorer", nullptr);
       };
 
       // Set Labels & Buttons
@@ -73,12 +78,12 @@ LRESULT CALLBACK RuleEditDialogProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
       ctx->hwnd_slider_cooldown = GetDlgItem(hwnd, IDC_RULE_SLIDER_COOLDOWN);
       ctx->hwnd_lbl_cooldown_val = GetDlgItem(hwnd, IDC_RULE_LBL_COOLDOWN_VAL);
 
-      apply_ctrl_theme(ctx->hwnd_target_type);
-      apply_ctrl_theme(ctx->hwnd_match_type);
+      apply_combo_theme(ctx->hwnd_target_type);
+      apply_combo_theme(ctx->hwnd_match_type);
       apply_ctrl_theme(ctx->hwnd_chk_not_found);
-      apply_ctrl_theme(ctx->hwnd_level);
-      apply_ctrl_theme(ctx->hwnd_col);
-      apply_ctrl_theme(ctx->hwnd_op);
+      apply_combo_theme(ctx->hwnd_level);
+      apply_combo_theme(ctx->hwnd_col);
+      apply_combo_theme(ctx->hwnd_op);
       apply_ctrl_theme(ctx->hwnd_slider_cooldown);
       apply_ctrl_theme(GetDlgItem(hwnd, IDOK));
       apply_ctrl_theme(GetDlgItem(hwnd, IDCANCEL));
@@ -292,11 +297,13 @@ LRESULT CALLBACK RuleEditDialogProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
   return FALSE;
 }
 
-bool ShowRuleEditModal(HWND parent, MonitorRule* in_out_rule, bool is_new, AppTheme theme) {
+bool ShowRuleEditModal(HWND parent, MonitorRule* in_out_rule, bool is_new,
+                       AppTheme theme, HFONT ui_font) {
   EditDialogContext ctx;
   ctx.rule = *in_out_rule;
   ctx.is_new = is_new;
   ctx.theme = theme;
+  ctx.ui_font = ui_font;
 
   INT_PTR res = DialogBoxParamW(
       GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDD_RULE_EDIT_DIALOG), parent,
@@ -310,8 +317,13 @@ bool ShowRuleEditModal(HWND parent, MonitorRule* in_out_rule, bool is_new, AppTh
 }
 }  // namespace
 
-MonitorDialog::MonitorDialog(HWND parent_hwnd, const std::vector<MonitorRule>& rules, AppTheme theme)
-    : parent_hwnd_(parent_hwnd), rules_(rules), theme_(theme) {}
+MonitorDialog::MonitorDialog(HWND parent_hwnd,
+                             const std::vector<MonitorRule>& rules,
+                             AppTheme theme, HFONT ui_font)
+    : parent_hwnd_(parent_hwnd),
+      rules_(rules),
+      theme_(theme),
+      ui_font_(ui_font) {}
 
 bool MonitorDialog::Show() {
   INT_PTR res = DialogBoxParamW(
@@ -323,7 +335,7 @@ bool MonitorDialog::Show() {
 
 bool MonitorDialog::ShowAddRuleForProcess(
     HWND parent_hwnd, const std::wstring& process_name, uint32_t pid,
-    std::vector<MonitorRule>* in_out_rules, AppTheme theme) {
+    std::vector<MonitorRule>* in_out_rules, AppTheme theme, HFONT ui_font) {
   MonitorRule new_rule;
   new_rule.name = process_name;
   new_rule.match_target = ProcessMatchTarget::kProcessName;
@@ -336,7 +348,7 @@ bool MonitorDialog::ShowAddRuleForProcess(
   cond.numeric_value = 80.0;
   new_rule.conditions.push_back(cond);
 
-  if (ShowRuleEditModal(parent_hwnd, &new_rule, true, theme)) {
+  if (ShowRuleEditModal(parent_hwnd, &new_rule, true, theme, ui_font)) {
     in_out_rules->push_back(new_rule);
     return true;
   }
@@ -364,6 +376,7 @@ LRESULT CALLBACK MonitorDialog::DialogProc(HWND hwnd, UINT msg, WPARAM wparam, L
 void MonitorDialog::InitializeDialog(HWND hwnd) {
   SetWindowTextW(hwnd, LanguageManager::GetString(StringId::kDlgMonitorTitle));
   ThemeManager::ApplyTheme(hwnd, theme_);
+  ThemeManager::ApplyFontToWindowTree(hwnd, ui_font_);
 
   bool is_dark = (theme_ == AppTheme::kDark);
   const auto& palette = ThemeManager::GetPalette(theme_);
@@ -492,7 +505,7 @@ void MonitorDialog::OnAddRule() {
   new_rule.target_pattern = L"";
   new_rule.cooldown_seconds = 30;
 
-  if (ShowRuleEditModal(dlg_hwnd_, &new_rule, true, theme_)) {
+  if (ShowRuleEditModal(dlg_hwnd_, &new_rule, true, theme_, ui_font_)) {
     rules_.push_back(new_rule);
     RefreshRuleList();
   }
@@ -502,7 +515,7 @@ void MonitorDialog::OnEditRule() {
   auto sel = GetSelectedRuleIndices();
   if (sel.size() != 1) return;
 
-  if (ShowRuleEditModal(dlg_hwnd_, &rules_[sel[0]], false, theme_)) {
+  if (ShowRuleEditModal(dlg_hwnd_, &rules_[sel[0]], false, theme_, ui_font_)) {
     RefreshRuleList();
   }
 }

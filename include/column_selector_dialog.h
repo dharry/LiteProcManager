@@ -15,7 +15,9 @@ namespace lite_proc_manager {
 
 class ColumnSelectorDialog {
  public:
-  ColumnSelectorDialog(HWND parent_hwnd, const std::vector<ProcessColumnInfo>& columns, AppTheme theme);
+  ColumnSelectorDialog(HWND parent_hwnd,
+                       const std::vector<ProcessColumnInfo>& columns,
+                       AppTheme theme, HFONT ui_font);
   ~ColumnSelectorDialog();
 
   bool Show();
@@ -36,6 +38,7 @@ class ColumnSelectorDialog {
   HWND listbox_hwnd_{nullptr};
   std::vector<ProcessColumnInfo> columns_;
   AppTheme theme_{AppTheme::kDark};
+  HFONT ui_font_{nullptr};  // Borrowed from the main window.
   bool result_{false};
 };
 

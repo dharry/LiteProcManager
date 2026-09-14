@@ -16,7 +16,8 @@ namespace lite_proc_manager {
 
 class MonitorDialog {
  public:
-  MonitorDialog(HWND parent_hwnd, const std::vector<MonitorRule>& rules, AppTheme theme);
+  MonitorDialog(HWND parent_hwnd, const std::vector<MonitorRule>& rules,
+                AppTheme theme, HFONT ui_font);
   ~MonitorDialog() = default;
 
   bool Show();
@@ -24,7 +25,7 @@ class MonitorDialog {
 
   static bool ShowAddRuleForProcess(
       HWND parent_hwnd, const std::wstring& process_name, uint32_t pid,
-      std::vector<MonitorRule>* in_out_rules, AppTheme theme);
+      std::vector<MonitorRule>* in_out_rules, AppTheme theme, HFONT ui_font);
 
  private:
   static LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -54,6 +55,7 @@ class MonitorDialog {
 
   std::vector<MonitorRule> rules_;
   AppTheme theme_{AppTheme::kDark};
+  HFONT ui_font_{nullptr};  // Borrowed from the main window.
   bool confirmed_{false};
 };
 

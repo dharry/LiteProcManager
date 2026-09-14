@@ -12,7 +12,8 @@ namespace lite_proc_manager {
 
 class OptionsDialog {
  public:
-  OptionsDialog(HWND parent_hwnd, const AppSettings& settings);
+  OptionsDialog(HWND parent_hwnd, const AppSettings& settings,
+                AppTheme applied_theme, HFONT ui_font);
   ~OptionsDialog() = default;
 
   bool Show();
@@ -34,6 +35,7 @@ class OptionsDialog {
   HWND dlg_hwnd_{nullptr};
 
   HWND combo_lang_{nullptr};
+  HWND combo_theme_{nullptr};
   HWND lbl_list_font_val_{nullptr};
   HWND btn_list_font_{nullptr};
   HWND lbl_ui_font_val_{nullptr};
@@ -48,6 +50,8 @@ class OptionsDialog {
   HWND btn_del_excluded_{nullptr};
 
   AppSettings settings_;
+  AppTheme applied_theme_{AppTheme::kLight};
+  HFONT ui_font_{nullptr};  // Borrowed from the main window.
   bool confirmed_{false};
 };
 

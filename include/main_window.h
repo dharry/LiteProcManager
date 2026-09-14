@@ -40,7 +40,7 @@ class MainWindow {
   bool Create(HINSTANCE instance, int cmd_show);
   int RunMessageLoop();
 
-  bool IsDarkMode() const { return false; }
+  bool IsDarkMode() const { return settings_.theme == AppTheme::kDark; }
 
  private:
   struct ProcessIdentity {
@@ -80,6 +80,7 @@ class MainWindow {
   void OnFilterConditionChanged();
   void ScheduleFilterSettingsSave();
   void FlushPendingFilterSettingsSave();
+  void SaveSettingsPreservingPendingTheme() const;
   void ApplyFilterAndDisplay();
   void UpdateListView(const ProcessListViewState* preserved_state = nullptr);
   void UpdateTreeView(const ProcessTreeViewState* preserved_state = nullptr);

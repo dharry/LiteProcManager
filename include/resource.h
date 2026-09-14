@@ -98,6 +98,7 @@
 #define IDD_MONITOR_DIALOG              2003
 #define IDD_RULE_EDIT_DIALOG            2004
 #define IDD_ADD_EXCLUDED_DIALOG         2005
+#define IDD_ABOUT_DIALOG                2006
 
 // Options Dialog Controls
 #define IDC_OPT_COMBO_LANG              3001
@@ -164,6 +165,11 @@
 // Add Excluded Process Dialog Controls
 #define IDC_ADD_EXCL_PROMPT             7001
 #define IDC_ADD_EXCL_EDIT               7002
+
+// About Dialog Controls
+#define IDC_ABOUT_ICON                  7101
+#define IDC_ABOUT_APP_NAME              7102
+#define IDC_ABOUT_DETAILS               7103
 
 // Timers & Messages
 #define IDT_REFRESH_TIMER               501
@@ -465,13 +471,14 @@
 #define IDS_FILE_DIALOG_TITLE_TSV       10337
 #define IDS_MSG_EXPORT_FAILED           10338
 #define IDS_MSG_RESTART_FAILED          10339
+#define IDS_MSG_NO_RELATED_SERVICES     10340
 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        2005
+#define _APS_NEXT_RESOURCE_VALUE        2007
 #define _APS_NEXT_COMMAND_VALUE         32771
-#define _APS_NEXT_CONTROL_VALUE         7000
+#define _APS_NEXT_CONTROL_VALUE         7104
 #define _APS_NEXT_SYMED_VALUE           102
 #endif
 #endif
