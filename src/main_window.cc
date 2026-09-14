@@ -293,15 +293,14 @@ bool IsSearchPlaceholderOrEmpty(const std::wstring& text) {
   std::wstring trimmed = text.substr(first, (last - first + 1));
 
   std::wstring cur_ph = LanguageManager::GetString(StringId::kSearchPlaceholder);
-  if (text == cur_ph || trimmed == cur_ph) return true;
-
-  // Direct check against known placeholder fragments
-  if (trimmed.find(L"Search process") != std::wstring::npos ||
-      trimmed.find(L"プロセス・PID・説明で検索") != std::wstring::npos) {
-    return true;
-  }
-
-  return false;
+  size_t placeholder_first = cur_ph.find_first_not_of(L" \t\r\n");
+  size_t placeholder_last = cur_ph.find_last_not_of(L" \t\r\n");
+  std::wstring trimmed_placeholder =
+      placeholder_first == std::wstring::npos
+          ? std::wstring()
+          : cur_ph.substr(placeholder_first,
+                          placeholder_last - placeholder_first + 1);
+  return text == cur_ph || trimmed == trimmed_placeholder;
 }
 
 constexpr UINT_PTR kStatusBarSubclassId = 0x9002;
@@ -660,6 +659,11 @@ ProcessSnapshotOptions BuildProcessSnapshotOptions(const AppSettings& settings) 
 
 MainWindow::MainWindow() : settings_(AppSettings::Load()) {
   LanguageManager::Initialize(settings_.language);
+  for (auto& rule : settings_.monitor_rules) {
+    if (rule.name.empty()) {
+      rule.name = LanguageManager::GetString(StringId::kDefaultMonitorRuleName);
+    }
+  }
   is_elevated_ = IsCurrentProcessElevated();
   search_active_brush_ = CreateSolidBrush(RGB(253, 253, 223));  // #FDFDDF
 
@@ -2261,14 +2265,14 @@ void MainWindow::ShowAboutDialog() {
   context.ui_font = ui_font_;
   context.title = LanguageManager::GetString(StringId::kAboutTitle);
   context.app_name = LanguageManager::GetString(StringId::kAboutAppName);
-  std::wostringstream oss;
-  oss << L"Version: " << APP_VERSION_STR << L"\r\n";
-  oss << L"Architecture: x64 (Native C++)\r\n";
-  oss << L"Privilege: "
-      << (is_elevated_ ? L"Administrator" : L"Standard User") << L"\r\n\r\n";
-  oss << L"High-performance Windows LiteProcManager\r\n";
-  oss << L"Authors: Akifumi KISHI";
-  context.details = oss.str();
+  const wchar_t* privilege = LanguageManager::GetString(
+      is_elevated_ ? StringId::kPrivilegeAdministrator
+                   : StringId::kPrivilegeStandardUser);
+  wchar_t details[1024] = {0};
+  swprintf_s(details,
+             LanguageManager::GetString(StringId::kAboutDetailsFormat),
+             APP_VERSION_STR, privilege);
+  context.details = details;
 
   DialogBoxParamW(GetModuleHandleW(nullptr),
                   MAKEINTRESOURCEW(IDD_ABOUT_DIALOG), hwnd_,
@@ -2444,7 +2448,8 @@ void MainWindow::UpdateTrayTooltip() {
     if (mem_percent > 100.0) mem_percent = 100.0;
   }
 
-  std::wstring mem_label = LanguageManager::IsJapanese() ? L"メモリ" : L"Memory";
+  std::wstring mem_label =
+      LanguageManager::GetString(StringId::kTrayMemoryLabel);
   wchar_t tip[128];
   swprintf_s(tip, L"CPU %.1f%%\n%s %.1f%%", cpu_usage, mem_label.c_str(), mem_percent);
 
@@ -2563,7 +2568,7 @@ void MainWindow::UpdateLanguageAndUI() {
 
   std::wstring title = LanguageManager::GetString(StringId::kAppTitle);
   if (is_elevated_) {
-    title += LanguageManager::IsJapanese() ? L" (管理者)" : L" (Administrator)";
+    title += LanguageManager::GetString(StringId::kAdministratorSuffix);
   }
   SetWindowTextW(hwnd_, title.c_str());
 
@@ -2590,10 +2595,12 @@ void MainWindow::UpdateLanguageAndUI() {
   AppendMenuW(new_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(view_menu), LanguageManager::GetString(StringId::kMenuView));
 
   HMENU help_menu = CreatePopupMenu();
-  std::wstring version_label = LanguageManager::IsJapanese()
-      ? (std::wstring(L"バージョン: ") + APP_VERSION_STR + L" (&A)...")
-      : (std::wstring(L"Version: ") + APP_VERSION_STR + L" (&A)...");
-  AppendMenuW(help_menu, MF_STRING, IDM_ABOUT, version_label.c_str());
+  wchar_t version_label[128] = {0};
+  swprintf_s(
+      version_label,
+      LanguageManager::GetString(StringId::kMenuAboutVersionFormat),
+      APP_VERSION_STR);
+  AppendMenuW(help_menu, MF_STRING, IDM_ABOUT, version_label);
   AppendMenuW(new_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(help_menu), LanguageManager::GetString(StringId::kMenuHelp));
 
   SetMenu(hwnd_, new_menu);
@@ -3025,9 +3032,12 @@ void MainWindow::StartSelectedService() {
 
   std::wstring err;
   if (!service_manager_service_.StartServiceByName(svc->service_name, &err)) {
-    std::wstring msg = L"サービスの開始に失敗しました:\n" + err;
+    std::wstring msg =
+        LanguageManager::GetString(StringId::kMsgServiceStartFailed) +
+        std::wstring(L"\n") + err;
     if (!is_elevated_) {
-      msg += L"\n\n※この操作には管理者権限が必要です。";
+      msg += L"\n\n";
+      msg += LanguageManager::GetString(StringId::kMsgAdministratorRequired);
     }
     MessageBoxW(hwnd_, msg.c_str(), LanguageManager::GetString(StringId::kTitleError), MB_OK | MB_ICONERROR);
   } else {
@@ -3041,9 +3051,12 @@ void MainWindow::StopSelectedService() {
 
   std::wstring err;
   if (!service_manager_service_.StopServiceByName(svc->service_name, &err)) {
-    std::wstring msg = L"サービスの停止に失敗しました:\n" + err;
+    std::wstring msg =
+        LanguageManager::GetString(StringId::kMsgServiceStopFailed) +
+        std::wstring(L"\n") + err;
     if (!is_elevated_) {
-      msg += L"\n\n※この操作には管理者権限が必要です。";
+      msg += L"\n\n";
+      msg += LanguageManager::GetString(StringId::kMsgAdministratorRequired);
     }
     MessageBoxW(hwnd_, msg.c_str(), LanguageManager::GetString(StringId::kTitleError), MB_OK | MB_ICONERROR);
   } else {
@@ -3057,9 +3070,12 @@ void MainWindow::RestartSelectedService() {
 
   std::wstring err;
   if (!service_manager_service_.RestartServiceByName(svc->service_name, &err)) {
-    std::wstring msg = L"サービスの再起動に失敗しました:\n" + err;
+    std::wstring msg =
+        LanguageManager::GetString(StringId::kMsgServiceRestartFailed) +
+        std::wstring(L"\n") + err;
     if (!is_elevated_) {
-      msg += L"\n\n※この操作には管理者権限が必要です。";
+      msg += L"\n\n";
+      msg += LanguageManager::GetString(StringId::kMsgAdministratorRequired);
     }
     MessageBoxW(hwnd_, msg.c_str(), LanguageManager::GetString(StringId::kTitleError), MB_OK | MB_ICONERROR);
   } else {
@@ -3073,9 +3089,12 @@ void MainWindow::ChangeSelectedServiceStartupType(DWORD start_type) {
 
   std::wstring err;
   if (!service_manager_service_.ChangeStartupType(svc->service_name, start_type, &err)) {
-    std::wstring msg = L"スタートアップ種類の変更に失敗しました:\n" + err;
+    std::wstring msg =
+        LanguageManager::GetString(StringId::kMsgServiceStartupTypeFailed) +
+        std::wstring(L"\n") + err;
     if (!is_elevated_) {
-      msg += L"\n\n※この操作には管理者権限が必要です。";
+      msg += L"\n\n";
+      msg += LanguageManager::GetString(StringId::kMsgAdministratorRequired);
     }
     MessageBoxW(hwnd_, msg.c_str(), LanguageManager::GetString(StringId::kTitleError), MB_OK | MB_ICONERROR);
   } else {

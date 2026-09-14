@@ -364,7 +364,7 @@ AppSettings AppSettings::LoadFrom(const std::wstring& settings_path, const std::
       for (const auto& r_val : rules_arr) {
         MonitorRule rule;
         rule.id = r_val[L"Id"].as_string(rule.id);
-        rule.name = r_val[L"Name"].as_string(L"監視ルール");
+        rule.name = r_val[L"Name"].as_string(L"");
         rule.enabled = r_val[L"Enabled"].as_bool(true);
 
         std::wstring target_str = r_val[L"MatchTarget"].as_string(L"ProcessName");

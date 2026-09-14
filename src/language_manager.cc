@@ -119,8 +119,13 @@ UINT StringIdToResourceId(StringId id) {
     case StringId::kMenuExportTsv: return IDS_MENU_EXPORT_TSV;
     case StringId::kMenuHelp: return IDS_MENU_HELP;
     case StringId::kMenuAbout: return IDS_MENU_ABOUT;
+    case StringId::kMenuAboutVersionFormat: return IDS_MENU_ABOUT_VERSION_FORMAT;
     case StringId::kAboutTitle: return IDS_ABOUT_TITLE;
     case StringId::kAboutAppName: return IDS_ABOUT_APP_NAME;
+    case StringId::kAboutDetailsFormat: return IDS_ABOUT_DETAILS_FORMAT;
+    case StringId::kPrivilegeAdministrator: return IDS_PRIVILEGE_ADMINISTRATOR;
+    case StringId::kPrivilegeStandardUser: return IDS_PRIVILEGE_STANDARD_USER;
+    case StringId::kAdministratorSuffix: return IDS_ADMINISTRATOR_SUFFIX;
 
     // Tooltips
     case StringId::kTooltipThemeLight: return IDS_TOOLTIP_THEME_LIGHT;
@@ -323,6 +328,14 @@ UINT StringIdToResourceId(StringId id) {
     case StringId::kMenuProcessGoToService: return IDS_MENU_PROCESS_GO_TO_SERVICE;
     case StringId::kStatusServiceCounts: return IDS_STATUS_SERVICE_COUNTS;
     case StringId::kMsgNoRelatedServices: return IDS_MSG_NO_RELATED_SERVICES;
+    case StringId::kMsgServiceStartFailed: return IDS_MSG_SERVICE_START_FAILED;
+    case StringId::kMsgServiceStopFailed: return IDS_MSG_SERVICE_STOP_FAILED;
+    case StringId::kMsgServiceRestartFailed: return IDS_MSG_SERVICE_RESTART_FAILED;
+    case StringId::kMsgServiceStartupTypeFailed: return IDS_MSG_SERVICE_STARTUP_FAILED;
+    case StringId::kMsgAdministratorRequired: return IDS_MSG_ADMIN_REQUIRED;
+    case StringId::kSystemErrorCodePrefix: return IDS_SYSTEM_ERROR_CODE_PREFIX;
+    case StringId::kTrayMemoryLabel: return IDS_TRAY_MEMORY_LABEL;
+    case StringId::kDefaultMonitorRuleName: return IDS_DEFAULT_MONITOR_RULE_NAME;
   }
   return 0;
 }

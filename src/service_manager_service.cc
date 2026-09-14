@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "language_manager.h"
 #include "service_enumeration_helper.h"
 
 #pragma comment(lib, "advapi32.lib")
@@ -31,7 +32,8 @@ std::wstring GetSystemErrorMessage(DWORD error_code) {
     }
     return msg;
   }
-  return L"Error code: " + std::to_wstring(error_code);
+  return LanguageManager::GetString(StringId::kSystemErrorCodePrefix) +
+         std::to_wstring(error_code);
 }
 
 }  // namespace

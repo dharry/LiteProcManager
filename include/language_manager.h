@@ -47,8 +47,13 @@ enum class StringId {
   kMenuExportTsv,
   kMenuHelp,
   kMenuAbout,
+  kMenuAboutVersionFormat,
   kAboutTitle,
   kAboutAppName,
+  kAboutDetailsFormat,
+  kPrivilegeAdministrator,
+  kPrivilegeStandardUser,
+  kAdministratorSuffix,
   // Tooltips
   kTooltipThemeLight,
   kTooltipThemeDark,
@@ -251,6 +256,14 @@ enum class StringId {
   kMenuProcessGoToService,
   kStatusServiceCounts,
   kMsgNoRelatedServices,
+  kMsgServiceStartFailed,
+  kMsgServiceStopFailed,
+  kMsgServiceRestartFailed,
+  kMsgServiceStartupTypeFailed,
+  kMsgAdministratorRequired,
+  kSystemErrorCodePrefix,
+  kTrayMemoryLabel,
+  kDefaultMonitorRuleName,
 };
 
 class LanguageManager {

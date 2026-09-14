@@ -915,6 +915,14 @@ TEST_CLASS(LanguageManagerTests) {
             L"このプロセスに関連付けられたサービスは見つかりませんでした。"),
         std::wstring(LanguageManager::GetString(
             StringId::kMsgNoRelatedServices)));
+    Assert::AreEqual(
+        std::wstring(L"サービスの停止に失敗しました:"),
+        std::wstring(LanguageManager::GetString(
+            StringId::kMsgServiceStopFailed)));
+    Assert::AreEqual(
+        std::wstring(L"監視ルール"),
+        std::wstring(LanguageManager::GetString(
+            StringId::kDefaultMonitorRuleName)));
 
     LanguageManager::SetLanguage(AppLanguage::kEnglish);
     Assert::IsFalse(LanguageManager::IsJapanese());
@@ -960,6 +968,14 @@ TEST_CLASS(LanguageManagerTests) {
         std::wstring(L"No services associated with this process were found."),
         std::wstring(LanguageManager::GetString(
             StringId::kMsgNoRelatedServices)));
+    Assert::AreEqual(
+        std::wstring(L"Failed to stop the service:"),
+        std::wstring(LanguageManager::GetString(
+            StringId::kMsgServiceStopFailed)));
+    Assert::AreEqual(
+        std::wstring(L"Monitor Rule"),
+        std::wstring(LanguageManager::GetString(
+            StringId::kDefaultMonitorRuleName)));
   }
 
   TEST_METHOD(LanguageManager_AutoDetect) {
