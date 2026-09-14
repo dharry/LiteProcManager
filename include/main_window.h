@@ -111,6 +111,8 @@ class MainWindow {
   void CopySelectedInfo(ProcessColumnId col_id);
   void CopySelectedAsJson();
   void CopySelectedAsTsv();
+  void ExportSelectedAsJson();
+  void ExportSelectedAsTsv();
   void SetClipboardText(const std::wstring& text);
 
   void ShowContextMenu(int x, int y);

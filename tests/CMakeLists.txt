@@ -5,6 +5,7 @@ set(TEST_SOURCES
     ../src/process_snapshot_service.cc
     ../src/process_item.cc
     ../src/process_column.cc
+    ../src/process_export.cc
     ../src/monitor_rule.cc
     ../src/monitor_service.cc
     ../src/toast_window.cc

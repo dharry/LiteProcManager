@@ -59,7 +59,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>comctl32.lib;dwmapi.lib;uxtheme.lib;shell32.lib;version.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>comctl32.lib;comdlg32.lib;dwmapi.lib;uxtheme.lib;shell32.lib;version.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -81,7 +81,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>comctl32.lib;dwmapi.lib;uxtheme.lib;shell32.lib;version.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>comctl32.lib;comdlg32.lib;dwmapi.lib;uxtheme.lib;shell32.lib;version.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -97,6 +97,7 @@
     <ClInclude Include="..\include\native_types.h" />
     <ClInclude Include="..\include\options_dialog.h" />
     <ClInclude Include="..\include\process_column.h" />
+    <ClInclude Include="..\include\process_export.h" />
     <ClInclude Include="..\include\process_item.h" />
     <ClInclude Include="..\include\process_snapshot_service.h" />
     <ClInclude Include="..\include\resource.h" />
@@ -120,6 +121,7 @@
     <ClCompile Include="monitor_service.cc" />
     <ClCompile Include="options_dialog.cc" />
     <ClCompile Include="process_column.cc" />
+    <ClCompile Include="process_export.cc" />
     <ClCompile Include="process_item.cc" />
     <ClCompile Include="process_snapshot_service.cc" />
     <ClCompile Include="service_item.cc" />

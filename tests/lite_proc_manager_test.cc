@@ -18,6 +18,7 @@
 #include "../include/monitor_service.h"
 #include "../include/native_types.h"
 #include "../include/process_item.h"
+#include "../include/process_export.h"
 #include "../include/process_snapshot_service.h"
 #include "../include/service_item.h"
 #include "../include/service_manager_service.h"
@@ -189,6 +190,35 @@ TEST_CLASS(ProcessItemTests) {
                      SanitizeTsvCell(L"safe process.exe"));
     Assert::AreEqual(std::wstring(L"name description path"),
                      SanitizeTsvCell(L"name\tdescription\npath"));
+  }
+
+  TEST_METHOD(ProcessExport_ShouldUseSameVisibleColumnsForJsonAndTsv) {
+    auto process = std::make_shared<ProcessItem>();
+    process->name = L"=sample.exe";
+    process->process_id = 42;
+    process->description = L"hidden value";
+
+    std::vector<ProcessColumnInfo> columns = {
+        {ProcessColumnId::kName, L"Name", 100, ColumnAlignment::kLeft, true,
+         0},
+        {ProcessColumnId::kPid, L"PID", 80, ColumnAlignment::kRight, true, 1},
+        {ProcessColumnId::kDescription, L"Description", 100,
+         ColumnAlignment::kLeft, false, 2},
+    };
+    std::vector<std::shared_ptr<ProcessItem>> processes = {process};
+
+    std::wstring json_text = BuildProcessJson(processes, columns);
+    JsonValue json = JsonValue::Parse(json_text);
+    Assert::IsTrue(json.is_array());
+    Assert::AreEqual(1ULL, json.as_array().size());
+    Assert::AreEqual(std::wstring(L"=sample.exe"),
+                     json.as_array()[0][L"name"].as_string());
+    Assert::AreEqual(std::wstring(L"42"),
+                     json.as_array()[0][L"pid"].as_string());
+    Assert::IsFalse(json.as_array()[0].has_key(L"description"));
+
+    Assert::AreEqual(std::wstring(L"Name\tPID\r\n'=sample.exe\t42\r\n"),
+                     BuildProcessTsv(processes, columns));
   }
 
   TEST_METHOD(Formatting_ShouldReturnValidStrings) {
@@ -796,6 +826,12 @@ TEST_CLASS(LanguageManagerTests) {
     Assert::AreEqual(std::wstring(L"追加"), std::wstring(LanguageManager::GetString(StringId::kBtnAdd)));
     Assert::AreEqual(std::wstring(L"削除"), std::wstring(LanguageManager::GetString(StringId::kBtnRemove)));
     Assert::AreEqual(std::wstring(L"削除"), std::wstring(LanguageManager::GetString(StringId::kBtnDelete)));
+    Assert::AreEqual(std::wstring(L"ファイルへ出力 (JSON)(&F)..."),
+                     std::wstring(LanguageManager::GetString(
+                         StringId::kMenuExportJson)));
+    Assert::AreEqual(std::wstring(L"TSV ファイル (*.tsv)"),
+                     std::wstring(LanguageManager::GetString(
+                         StringId::kFileFilterTsv)));
 
     LanguageManager::SetLanguage(AppLanguage::kEnglish);
     Assert::IsFalse(LanguageManager::IsJapanese());
@@ -804,6 +840,9 @@ TEST_CLASS(LanguageManagerTests) {
     Assert::AreEqual(std::wstring(L"CPU"), LanguageManager::GetColumnHeaderText(ProcessColumnId::kCpu));
     Assert::AreEqual(std::wstring(L"Memory (Working Set)"), LanguageManager::GetColumnHeaderText(ProcessColumnId::kWorkingSet));
     Assert::AreEqual(std::wstring(L"Contains"), std::wstring(LanguageManager::GetString(StringId::kOpContains)));
+    Assert::AreEqual(std::wstring(L"Export JSON to &File..."),
+                     std::wstring(LanguageManager::GetString(
+                         StringId::kMenuExportJson)));
     Assert::AreEqual(std::wstring(L"Do you want to exit LiteProcManager?"), std::wstring(LanguageManager::GetString(StringId::kMsgConfirmExit)));
     Assert::AreEqual(std::wstring(L"Exact Match"), MonitorRule::MatchTypeToString(ProcessMatchType::kExact));
     Assert::AreEqual(std::wstring(L"Contains"), MonitorRule::MatchTypeToString(ProcessMatchType::kContains));

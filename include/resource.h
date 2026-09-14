@@ -30,6 +30,8 @@
 #define IDM_COPY_JSON                   212
 #define IDM_COPY_TSV                    213
 #define IDM_ABOUT                       214
+#define IDM_EXPORT_JSON                 215
+#define IDM_EXPORT_TSV                  216
 
 #define IDM_PRIORITY_REALTIME           220
 #define IDM_PRIORITY_HIGH               221
@@ -455,6 +457,13 @@
 #define IDS_MENU_PROCESS_GO_TO_SERVICE  10329
 #define IDS_STATUS_SERVICE_COUNTS       10330
 #define IDS_MENU_HIDE_COLUMN            10331
+#define IDS_MENU_EXPORT_JSON            10332
+#define IDS_MENU_EXPORT_TSV             10333
+#define IDS_FILE_FILTER_JSON            10334
+#define IDS_FILE_FILTER_TSV             10335
+#define IDS_FILE_DIALOG_TITLE_JSON      10336
+#define IDS_FILE_DIALOG_TITLE_TSV       10337
+#define IDS_MSG_EXPORT_FAILED           10338
 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS

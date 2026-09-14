@@ -7,6 +7,7 @@ set(SOURCES
     process_snapshot_service.cc
     process_item.cc
     process_column.cc
+    process_export.cc
     monitor_rule.cc
     monitor_service.cc
     monitor_dialog.cc
@@ -31,6 +32,7 @@ target_link_libraries(LiteProcManager PRIVATE
     dwmapi
     uxtheme
     shell32
+    comdlg32
     version
     advapi32
     user32

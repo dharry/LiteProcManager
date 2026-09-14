@@ -108,9 +108,15 @@ UINT StringIdToResourceId(StringId id) {
     case StringId::kMenuCopyCommandLine: return IDS_MENU_COPY_CMD;
     case StringId::kMenuCopyPath: return IDS_MENU_COPY_PATH;
     case StringId::kMenuEndProcessTree: return IDS_MENU_END_TREE;
+    case StringId::kFileFilterJson: return IDS_FILE_FILTER_JSON;
+    case StringId::kFileFilterTsv: return IDS_FILE_FILTER_TSV;
+    case StringId::kFileDialogTitleJson: return IDS_FILE_DIALOG_TITLE_JSON;
+    case StringId::kFileDialogTitleTsv: return IDS_FILE_DIALOG_TITLE_TSV;
     case StringId::kMenuRestartAsAdmin: return IDS_MENU_RESTART_AS_ADMIN;
     case StringId::kMenuCopyJson: return IDS_MENU_COPY_JSON;
     case StringId::kMenuCopyTsv: return IDS_MENU_COPY_TSV;
+    case StringId::kMenuExportJson: return IDS_MENU_EXPORT_JSON;
+    case StringId::kMenuExportTsv: return IDS_MENU_EXPORT_TSV;
     case StringId::kMenuHelp: return IDS_MENU_HELP;
     case StringId::kMenuAbout: return IDS_MENU_ABOUT;
     case StringId::kAboutTitle: return IDS_ABOUT_TITLE;
@@ -282,6 +288,7 @@ UINT StringIdToResourceId(StringId id) {
     case StringId::kMsgError: return IDS_MSG_ERROR;
     case StringId::kMsgInfo: return IDS_MSG_INFO;
     case StringId::kMsgWarning: return IDS_MSG_WARNING;
+    case StringId::kMsgExportFailed: return IDS_MSG_EXPORT_FAILED;
 
     // Services Management
     case StringId::kTabProcesses: return IDS_TAB_PROCESSES;

@@ -43,6 +43,8 @@ enum class StringId {
   kMenuRestartAsAdmin,
   kMenuCopyJson,
   kMenuCopyTsv,
+  kMenuExportJson,
+  kMenuExportTsv,
   kMenuHelp,
   kMenuAbout,
   kAboutTitle,
@@ -190,6 +192,10 @@ enum class StringId {
   kMenuCopyCommandLine,
   kMenuCopyPath,
   kMenuEndProcessTree,
+  kFileFilterJson,
+  kFileFilterTsv,
+  kFileDialogTitleJson,
+  kFileDialogTitleTsv,
   // Message Boxes & Prompts
   kMsgConfirmEndProcess,
   kMsgConfirmEndProcessMultiple,
@@ -211,6 +217,7 @@ enum class StringId {
   kMsgError,
   kMsgInfo,
   kMsgWarning,
+  kMsgExportFailed,
   // Services Management
   kTabProcesses,
   kTabServices,

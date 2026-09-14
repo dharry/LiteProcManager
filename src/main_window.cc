@@ -4,30 +4,33 @@
 
 #include <windows.h>
 #include <windowsx.h>
+#include <commdlg.h>
 #include <commctrl.h>
 #include <shellapi.h>
 #include <shlobj.h>
 #include <uxtheme.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cwctype>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 
 #include "column_selector_dialog.h"
-#include "json_helper.h"
 #include "language_manager.h"
 #include "monitor_dialog.h"
 #include "options_dialog.h"
+#include "process_export.h"
 #include "resource.h"
 #include "theme_manager.h"
-#include "tsv_helper.h"
 #include "version.h"
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "comdlg32.lib")
 
 // Defined in main.cc; releases the single-instance mutex so a relaunched
 // copy of this process does not mistake this (soon-to-exit) instance for
@@ -40,6 +43,13 @@ namespace lite_proc_manager {
 namespace {
 constexpr UINT kSearchDebounceMilliseconds = 150;
 constexpr UINT kFilterSaveDebounceMilliseconds = 500;
+std::atomic_uint32_t g_export_temporary_file_sequence{0};
+
+enum class ExportSaveResult {
+  kSaved,
+  kCancelled,
+  kError,
+};
 
 struct ServiceSnapshotMessage {
   uint64_t generation{0};
@@ -73,51 +83,121 @@ HRESULT OpenFolderAndSelectFile(const std::wstring& file_path) {
   return result;
 }
 
-const wchar_t* GetColumnJsonKey(ProcessColumnId id) {
-  switch (id) {
-    case ProcessColumnId::kName: return L"name";
-    case ProcessColumnId::kPid: return L"pid";
-    case ProcessColumnId::kStatus: return L"status";
-    case ProcessColumnId::kUserName: return L"user_name";
-    case ProcessColumnId::kCpu: return L"cpu_percent";
-    case ProcessColumnId::kPrivateWorkingSet: return L"private_working_set";
-    case ProcessColumnId::kWorkingSet: return L"working_set";
-    case ProcessColumnId::kPeakWorkingSet: return L"peak_working_set";
-    case ProcessColumnId::kWorkingSetDelta: return L"working_set_delta";
-    case ProcessColumnId::kCommitSize: return L"commit_size";
-    case ProcessColumnId::kPagedPool: return L"paged_pool";
-    case ProcessColumnId::kNonPagedPool: return L"non_paged_pool";
-    case ProcessColumnId::kBasePriority: return L"base_priority";
-    case ProcessColumnId::kHandles: return L"handles";
-    case ProcessColumnId::kThreads: return L"threads";
-    case ProcessColumnId::kUserObjects: return L"user_objects";
-    case ProcessColumnId::kGdiObjects: return L"gdi_objects";
-    case ProcessColumnId::kIoReadCount: return L"io_read_count";
-    case ProcessColumnId::kIoWriteCount: return L"io_write_count";
-    case ProcessColumnId::kIoOtherCount: return L"io_other_count";
-    case ProcessColumnId::kIoReadBytes: return L"io_read_bytes";
-    case ProcessColumnId::kIoWriteBytes: return L"io_write_bytes";
-    case ProcessColumnId::kIoOtherBytes: return L"io_other_bytes";
-    case ProcessColumnId::kFilePath: return L"file_path";
-    case ProcessColumnId::kCommandLine: return L"command_line";
-    case ProcessColumnId::kOsContext: return L"os_context";
-    case ProcessColumnId::kPlatform: return L"platform";
-    case ProcessColumnId::kElevated: return L"elevated";
-    case ProcessColumnId::kUacVirtualization: return L"uac_virtualization";
-    case ProcessColumnId::kDescription: return L"description";
-    case ProcessColumnId::kDepStatus: return L"dep_status";
-    case ProcessColumnId::kEnterpriseContext: return L"enterprise_context";
-    case ProcessColumnId::kDpiAwareness: return L"dpi_awareness";
-    case ProcessColumnId::kPackageName: return L"package_name";
-    case ProcessColumnId::kArchitecture: return L"architecture";
-    case ProcessColumnId::kGpuUsage: return L"gpu_usage";
-    case ProcessColumnId::kGpuEngine: return L"gpu_engine";
-    case ProcessColumnId::kDedicatedGpuMemory: return L"dedicated_gpu_memory";
-    case ProcessColumnId::kSharedGpuMemory: return L"shared_gpu_memory";
-    case ProcessColumnId::kSessionId: return L"session_id";
-    case ProcessColumnId::kCreateTime: return L"create_time";
-    default: return L"unknown";
+bool WriteUtf8ExportFileAtomically(const std::wstring& path,
+                                   const std::wstring& content,
+                                   bool include_bom) {
+  if (content.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return false;
   }
+
+  int utf8_length = WideCharToMultiByte(
+      CP_UTF8, WC_ERR_INVALID_CHARS, content.data(),
+      static_cast<int>(content.size()), nullptr, 0, nullptr, nullptr);
+  if (utf8_length <= 0) return false;
+
+  std::string utf8;
+  if (include_bom) {
+    utf8.append("\xEF\xBB\xBF", 3);
+  }
+  size_t content_offset = utf8.size();
+  utf8.resize(content_offset + static_cast<size_t>(utf8_length));
+  if (WideCharToMultiByte(
+          CP_UTF8, WC_ERR_INVALID_CHARS, content.data(),
+          static_cast<int>(content.size()), utf8.data() + content_offset,
+          utf8_length, nullptr, nullptr) != utf8_length) {
+    return false;
+  }
+
+  std::wstring temporary_path;
+  HANDLE temporary_file = INVALID_HANDLE_VALUE;
+  for (int attempt = 0; attempt < 16; ++attempt) {
+    uint32_t sequence = g_export_temporary_file_sequence.fetch_add(
+        1, std::memory_order_relaxed);
+    temporary_path = path + L".tmp." + std::to_wstring(GetCurrentProcessId()) +
+                     L"." + std::to_wstring(sequence);
+    temporary_file = CreateFileW(
+        temporary_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+        FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (temporary_file != INVALID_HANDLE_VALUE) break;
+    DWORD error = GetLastError();
+    if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) {
+      return false;
+    }
+  }
+  if (temporary_file == INVALID_HANDLE_VALUE) return false;
+
+  bool succeeded = true;
+  size_t written_total = 0;
+  while (written_total < utf8.size()) {
+    DWORD write_size = static_cast<DWORD>(std::min<size_t>(
+        utf8.size() - written_total, std::numeric_limits<DWORD>::max()));
+    DWORD written = 0;
+    if (!WriteFile(temporary_file, utf8.data() + written_total, write_size,
+                   &written, nullptr) ||
+        written == 0) {
+      succeeded = false;
+      break;
+    }
+    written_total += written;
+  }
+  if (succeeded && !FlushFileBuffers(temporary_file)) succeeded = false;
+  if (!CloseHandle(temporary_file)) succeeded = false;
+
+  if (!succeeded) {
+    DeleteFileW(temporary_path.c_str());
+    return false;
+  }
+  if (ReplaceFileW(path.c_str(), temporary_path.c_str(), nullptr, 0, nullptr,
+                   nullptr)) {
+    return true;
+  }
+
+  DWORD replace_error = GetLastError();
+  if ((replace_error == ERROR_FILE_NOT_FOUND ||
+       replace_error == ERROR_PATH_NOT_FOUND) &&
+      MoveFileExW(temporary_path.c_str(), path.c_str(),
+                  MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    return true;
+  }
+  DeleteFileW(temporary_path.c_str());
+  return false;
+}
+
+ExportSaveResult PromptAndSaveExportFile(
+    HWND owner, const std::wstring& content, const wchar_t* default_filename,
+    const wchar_t* default_extension, StringId filter_string_id,
+    StringId title_string_id, bool include_bom) {
+  std::vector<wchar_t> filename(32768, L'\0');
+  wcsncpy_s(filename.data(), filename.size(), default_filename, _TRUNCATE);
+
+  std::wstring filter_label = LanguageManager::GetString(filter_string_id);
+  std::wstring filter_pattern = L"*." + std::wstring(default_extension);
+  std::vector<wchar_t> filter;
+  filter.insert(filter.end(), filter_label.begin(), filter_label.end());
+  filter.push_back(L'\0');
+  filter.insert(filter.end(), filter_pattern.begin(), filter_pattern.end());
+  filter.push_back(L'\0');
+  filter.push_back(L'\0');
+
+  OPENFILENAMEW dialog{};
+  dialog.lStructSize = sizeof(dialog);
+  dialog.hwndOwner = owner;
+  dialog.lpstrFilter = filter.data();
+  dialog.lpstrFile = filename.data();
+  dialog.nMaxFile = static_cast<DWORD>(filename.size());
+  dialog.lpstrDefExt = default_extension;
+  std::wstring title = LanguageManager::GetString(title_string_id);
+  dialog.lpstrTitle = title.c_str();
+  dialog.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY |
+                 OFN_NOCHANGEDIR;
+
+  if (!GetSaveFileNameW(&dialog)) {
+    return CommDlgExtendedError() == 0 ? ExportSaveResult::kCancelled
+                                       : ExportSaveResult::kError;
+  }
+  return WriteUtf8ExportFileAtomically(filename.data(), content, include_bom)
+             ? ExportSaveResult::kSaved
+             : ExportSaveResult::kError;
 }
 
 bool CaseInsensitiveContains(const std::wstring& text, const std::wstring& pattern) {
@@ -1701,54 +1781,41 @@ void MainWindow::CopySelectedInfo(ProcessColumnId col_id) {
 void MainWindow::CopySelectedAsJson() {
   auto selected_procs = GetSelectedProcesses();
   if (selected_procs.empty()) return;
-
-  std::vector<ProcessColumnInfo> visible_cols;
-  for (const auto& col : settings_.columns) {
-    if (col.visible) visible_cols.push_back(col);
-  }
-
-  JsonArray root_arr;
-  for (const auto& proc : selected_procs) {
-    JsonObject obj;
-    for (const auto& col : visible_cols) {
-      std::wstring key = GetColumnJsonKey(col.id);
-      std::wstring val = proc->GetColumnValue(col.id);
-      obj.push_back({key, JsonValue(val)});
-    }
-    root_arr.push_back(JsonValue(obj));
-  }
-
-  std::wstring json_str = JsonValue(root_arr).Serialize(2);
-  SetClipboardText(json_str);
+  SetClipboardText(BuildProcessJson(selected_procs, settings_.columns));
 }
 
 void MainWindow::CopySelectedAsTsv() {
   auto selected_procs = GetSelectedProcesses();
   if (selected_procs.empty()) return;
+  SetClipboardText(BuildProcessTsv(selected_procs, settings_.columns));
+}
 
-  std::vector<ProcessColumnInfo> visible_cols;
-  for (const auto& col : settings_.columns) {
-    if (col.visible) visible_cols.push_back(col);
+void MainWindow::ExportSelectedAsJson() {
+  auto selected_procs = GetSelectedProcesses();
+  if (selected_procs.empty()) return;
+  ExportSaveResult result = PromptAndSaveExportFile(
+      hwnd_, BuildProcessJson(selected_procs, settings_.columns),
+      L"processes.json", L"json", StringId::kFileFilterJson,
+      StringId::kFileDialogTitleJson, false);
+  if (result == ExportSaveResult::kError) {
+    MessageBoxW(hwnd_, LanguageManager::GetString(StringId::kMsgExportFailed),
+                LanguageManager::GetString(StringId::kTitleError),
+                MB_OK | MB_ICONERROR);
   }
+}
 
-  std::wostringstream oss;
-  // Header row
-  for (size_t c = 0; c < visible_cols.size(); ++c) {
-    if (c > 0) oss << L"\t";
-    oss << SanitizeTsvCell(visible_cols[c].header_text);
+void MainWindow::ExportSelectedAsTsv() {
+  auto selected_procs = GetSelectedProcesses();
+  if (selected_procs.empty()) return;
+  ExportSaveResult result = PromptAndSaveExportFile(
+      hwnd_, BuildProcessTsv(selected_procs, settings_.columns),
+      L"processes.tsv", L"tsv", StringId::kFileFilterTsv,
+      StringId::kFileDialogTitleTsv, true);
+  if (result == ExportSaveResult::kError) {
+    MessageBoxW(hwnd_, LanguageManager::GetString(StringId::kMsgExportFailed),
+                LanguageManager::GetString(StringId::kTitleError),
+                MB_OK | MB_ICONERROR);
   }
-  oss << L"\r\n";
-
-  // Data rows
-  for (const auto& proc : selected_procs) {
-    for (size_t c = 0; c < visible_cols.size(); ++c) {
-      if (c > 0) oss << L"\t";
-      oss << SanitizeTsvCell(proc->GetColumnValue(visible_cols[c].id));
-    }
-    oss << L"\r\n";
-  }
-
-  SetClipboardText(oss.str());
 }
 
 void MainWindow::OpenMonitorSettings() {
@@ -2246,6 +2313,9 @@ void MainWindow::UpdateLanguageAndUI() {
   AppendMenuW(copy_menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(copy_menu, MF_STRING, IDM_COPY_JSON, LanguageManager::GetString(StringId::kMenuCopyJson));
   AppendMenuW(copy_menu, MF_STRING, IDM_COPY_TSV, LanguageManager::GetString(StringId::kMenuCopyTsv));
+  AppendMenuW(copy_menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(copy_menu, MF_STRING, IDM_EXPORT_JSON, LanguageManager::GetString(StringId::kMenuExportJson));
+  AppendMenuW(copy_menu, MF_STRING, IDM_EXPORT_TSV, LanguageManager::GetString(StringId::kMenuExportTsv));
   AppendMenuW(context_menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(copy_menu), LanguageManager::GetString(StringId::kMenuCopy));
 
   AppendMenuW(context_menu_, MF_SEPARATOR, 0, nullptr);
@@ -3145,6 +3215,12 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
           break;
         case IDM_COPY_TSV:
           CopySelectedAsTsv();
+          break;
+        case IDM_EXPORT_JSON:
+          ExportSelectedAsJson();
+          break;
+        case IDM_EXPORT_TSV:
+          ExportSelectedAsTsv();
           break;
 
         // Service Commands
