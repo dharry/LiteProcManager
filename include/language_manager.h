@@ -84,6 +84,7 @@ enum class StringId {
   kConfirmDeleteMultiple,
   kConfirmRestartTheme,
   kRestartNoticeTitle,
+  kMsgRestartFailed,
   kMsgConfirmExit,
   // Options Dialog
   kDlgOptionsTitle,

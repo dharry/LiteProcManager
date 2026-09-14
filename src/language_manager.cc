@@ -158,6 +158,7 @@ UINT StringIdToResourceId(StringId id) {
     case StringId::kConfirmDeleteMultiple: return IDS_CONFIRM_DELETE_MULTIPLE;
     case StringId::kConfirmRestartTheme: return IDS_CONFIRM_RESTART_THEME;
     case StringId::kRestartNoticeTitle: return IDS_RESTART_NOTICE_TITLE;
+    case StringId::kMsgRestartFailed: return IDS_MSG_RESTART_FAILED;
     case StringId::kMsgConfirmExit: return IDS_CONFIRM_EXIT;
 
     // Options Dialog

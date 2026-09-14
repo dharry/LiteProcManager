@@ -1877,19 +1877,44 @@ void MainWindow::RestartApplication() {
   FlushPendingFilterSettingsSave();
 
   wchar_t exe_path[MAX_PATH] = {0};
-  GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
+  DWORD path_length = GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
+  if (path_length == 0 || path_length >= MAX_PATH) {
+    MessageBoxW(hwnd_, LanguageManager::GetString(StringId::kMsgRestartFailed),
+                LanguageManager::GetString(StringId::kTitleError),
+                MB_OK | MB_ICONERROR);
+    return;
+  }
 
   // Release the single-instance lock before spawning the new copy, otherwise
   // it can start and find the mutex still held by this (exiting) process and
   // quit immediately, making the restart appear to do nothing.
   ReleaseSingleInstanceLock();
 
-  ShellExecuteW(nullptr, L"open", exe_path, nullptr, nullptr, SW_SHOWNORMAL);
+  SHELLEXECUTEINFOW sei = {sizeof(SHELLEXECUTEINFOW)};
+  sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+  sei.hwnd = hwnd_;
+  sei.lpVerb = L"open";
+  sei.lpFile = exe_path;
+  sei.nShow = SW_SHOWNORMAL;
 
-  if (notify_icon_data_.cbSize > 0) {
-    Shell_NotifyIconW(NIM_DELETE, &notify_icon_data_);
+  if (!ShellExecuteExW(&sei)) {
+    HANDLE mutex = CreateMutexW(
+        nullptr, TRUE, L"Local\\LiteProcManager_SingleInstance_Mutex");
+    if (mutex != nullptr) {
+      RestoreSingleInstanceLock(mutex);
+    }
+    MessageBoxW(hwnd_, LanguageManager::GetString(StringId::kMsgRestartFailed),
+                LanguageManager::GetString(StringId::kTitleError),
+                MB_OK | MB_ICONERROR);
+    return;
   }
-  ExitProcess(0);
+  if (sei.hProcess != nullptr) {
+    CloseHandle(sei.hProcess);
+  }
+
+  // Use the regular shutdown path so timers, worker threads, and owned
+  // resources are cleaned up before this process exits.
+  DestroyWindow(hwnd_);
 }
 
 void MainWindow::RestartAsAdministrator() {

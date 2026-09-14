@@ -895,6 +895,9 @@ TEST_CLASS(LanguageManagerTests) {
     Assert::AreEqual(std::wstring(L"メモリ (ワーキングセット)"), LanguageManager::GetColumnHeaderText(ProcessColumnId::kWorkingSet));
     Assert::AreEqual(std::wstring(L"含む"), std::wstring(LanguageManager::GetString(StringId::kOpContains)));
     Assert::AreEqual(std::wstring(L"LiteProcManagerを終了しますか？"), std::wstring(LanguageManager::GetString(StringId::kMsgConfirmExit)));
+    Assert::AreEqual(
+        std::wstring(L"アプリケーションを再起動できませんでした。現在のプロセスは実行を継続します。"),
+        std::wstring(LanguageManager::GetString(StringId::kMsgRestartFailed)));
     Assert::AreEqual(std::wstring(L"追加"), std::wstring(LanguageManager::GetString(StringId::kBtnAdd)));
     Assert::AreEqual(std::wstring(L"削除"), std::wstring(LanguageManager::GetString(StringId::kBtnRemove)));
     Assert::AreEqual(std::wstring(L"削除"), std::wstring(LanguageManager::GetString(StringId::kBtnDelete)));
@@ -916,6 +919,9 @@ TEST_CLASS(LanguageManagerTests) {
                      std::wstring(LanguageManager::GetString(
                          StringId::kMenuExportJson)));
     Assert::AreEqual(std::wstring(L"Do you want to exit LiteProcManager?"), std::wstring(LanguageManager::GetString(StringId::kMsgConfirmExit)));
+    Assert::AreEqual(
+        std::wstring(L"Failed to restart the application. The current process will continue running."),
+        std::wstring(LanguageManager::GetString(StringId::kMsgRestartFailed)));
     Assert::AreEqual(std::wstring(L"Exact Match"), MonitorRule::MatchTypeToString(ProcessMatchType::kExact));
     Assert::AreEqual(std::wstring(L"Contains"), MonitorRule::MatchTypeToString(ProcessMatchType::kContains));
     Assert::AreEqual(std::wstring(L"Starts With"), MonitorRule::MatchTypeToString(ProcessMatchType::kStartsWith));
