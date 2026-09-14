@@ -9,6 +9,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "service_enumeration_helper.h"
+
 #pragma comment(lib, "advapi32.lib")
 
 namespace lite_proc_manager {
@@ -46,50 +48,43 @@ std::vector<std::shared_ptr<ServiceItem>> ServiceManagerService::GetServicesSnap
     return result;
   }
 
-  DWORD bytes_needed = 0;
-  DWORD services_returned = 0;
-  DWORD resume_handle = 0;
-
-  // Determine required buffer size
-  EnumServicesStatusExW(
-      scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_STATE_ALL,
-      nullptr, 0, &bytes_needed, &services_returned, &resume_handle, nullptr);
-
-  if (bytes_needed == 0 ||
-      (cancellation && cancellation->load(std::memory_order_relaxed))) {
+  std::vector<ServiceStatusRecord> service_statuses;
+  bool enumeration_succeeded = EnumerateServiceStatusRecords(
+      [scm](BYTE* buffer, DWORD buffer_size, DWORD* bytes_needed,
+            DWORD* services_returned, DWORD* resume_handle) {
+        if (EnumServicesStatusExW(
+                scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_STATE_ALL,
+                buffer, buffer_size, bytes_needed, services_returned,
+                resume_handle, nullptr)) {
+          return static_cast<DWORD>(ERROR_SUCCESS);
+        }
+        return GetLastError();
+      },
+      cancellation, &service_statuses);
+  if (!enumeration_succeeded) {
     CloseServiceHandle(scm);
     return result;
   }
 
-  std::vector<BYTE> buffer(bytes_needed);
-  if (!EnumServicesStatusExW(
-          scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_STATE_ALL,
-          buffer.data(), bytes_needed, &bytes_needed, &services_returned,
-          &resume_handle, nullptr)) {
-    CloseServiceHandle(scm);
-    return result;
-  }
-
-  auto* services = reinterpret_cast<ENUM_SERVICE_STATUS_PROCESSW*>(buffer.data());
-  result.reserve(services_returned);
+  result.reserve(service_statuses.size());
   std::unordered_set<std::wstring> active_service_names;
-  active_service_names.reserve(services_returned);
+  active_service_names.reserve(service_statuses.size());
   bool cancelled = false;
 
   constexpr auto kConfigCacheLifetime = std::chrono::minutes(5);
   auto now = std::chrono::steady_clock::now();
 
-  for (DWORD i = 0; i < services_returned; ++i) {
+  for (const auto& service_status : service_statuses) {
     if (cancellation && cancellation->load(std::memory_order_relaxed)) {
       cancelled = true;
       break;
     }
 
     auto item = std::make_shared<ServiceItem>();
-    item->service_name = services[i].lpServiceName ? services[i].lpServiceName : L"";
-    item->display_name = services[i].lpDisplayName ? services[i].lpDisplayName : L"";
-    item->state = services[i].ServiceStatusProcess.dwCurrentState;
-    item->pid = services[i].ServiceStatusProcess.dwProcessId;
+    item->service_name = service_status.service_name;
+    item->display_name = service_status.display_name;
+    item->state = service_status.state;
+    item->pid = service_status.pid;
     active_service_names.insert(item->service_name);
 
     CachedServiceConfig config;
@@ -110,7 +105,8 @@ std::vector<std::shared_ptr<ServiceItem>> ServiceManagerService::GetServicesSnap
       config.refreshed_at = now;
 
       // Static configuration is queried only on a cache miss or after expiry.
-      SC_HANDLE svc = OpenServiceW(scm, services[i].lpServiceName, SERVICE_QUERY_CONFIG);
+      SC_HANDLE svc = OpenServiceW(
+          scm, service_status.service_name.c_str(), SERVICE_QUERY_CONFIG);
       if (svc) {
         DWORD cfg_bytes_needed = 0;
         QueryServiceConfigW(svc, nullptr, 0, &cfg_bytes_needed);

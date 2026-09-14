@@ -55,6 +55,7 @@
       <AdditionalIncludeDirectories>..\include;..\third_party\jsoncpp\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -75,6 +76,7 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <Optimization>MaxSpeed</Optimization>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -102,6 +104,7 @@
     <ClInclude Include="..\include\process_snapshot_service.h" />
     <ClInclude Include="..\include\resource.h" />
     <ClInclude Include="..\include\service_item.h" />
+    <ClInclude Include="..\include\service_enumeration_helper.h" />
     <ClInclude Include="..\include\service_manager_service.h" />
     <ClInclude Include="..\include\theme_manager.h" />
     <ClInclude Include="..\include\toast_window.h" />
@@ -126,6 +129,7 @@
     <ClCompile Include="process_item.cc" />
     <ClCompile Include="process_snapshot_service.cc" />
     <ClCompile Include="service_item.cc" />
+    <ClCompile Include="service_enumeration_helper.cc" />
     <ClCompile Include="service_manager_service.cc" />
     <ClCompile Include="theme_manager.cc" />
     <ClCompile Include="toast_window.cc" />

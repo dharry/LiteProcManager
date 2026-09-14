@@ -104,6 +104,7 @@
     <ClCompile Include="..\src\process_item.cc" />
     <ClCompile Include="..\src\process_snapshot_service.cc" />
     <ClCompile Include="..\src\service_item.cc" />
+    <ClCompile Include="..\src\service_enumeration_helper.cc" />
     <ClCompile Include="..\src\service_manager_service.cc" />
     <ClCompile Include="..\third_party\jsoncpp\src\jsoncpp.cpp" />
     <ClCompile Include="lite_proc_manager_test.cc" />

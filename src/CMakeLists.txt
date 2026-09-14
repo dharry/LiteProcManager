@@ -8,6 +8,9 @@ set(SOURCES
     process_item.cc
     process_column.cc
     process_export.cc
+    service_item.cc
+    service_enumeration_helper.cc
+    service_manager_service.cc
     monitor_rule.cc
     monitor_service.cc
     monitor_dialog.cc

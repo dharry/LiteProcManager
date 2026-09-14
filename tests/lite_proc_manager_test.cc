@@ -21,6 +21,7 @@
 #include "../include/process_export.h"
 #include "../include/process_snapshot_service.h"
 #include "../include/service_item.h"
+#include "../include/service_enumeration_helper.h"
 #include "../include/service_manager_service.h"
 #include "../include/tsv_helper.h"
 #include "../include/url_helper.h"
@@ -972,6 +973,64 @@ TEST_CLASS(LanguageManagerTests) {
     // Restore initial state
     AppSettings::SetAutoStart(initial_state);
     Assert::AreEqual(initial_state, AppSettings::IsAutoStartConfigured());
+  }
+
+  TEST_METHOD(ServiceEnumeration_ShouldGrowBufferAndFollowResumeHandle) {
+    int call_count = 0;
+    EnumServiceStatusPageCallback callback =
+        [&call_count](BYTE* buffer, DWORD buffer_size, DWORD* bytes_needed,
+                      DWORD* services_returned,
+                      DWORD* resume_handle) -> DWORD {
+      ++call_count;
+      if (call_count == 1) {
+        Assert::AreEqual(0UL, *resume_handle);
+        *bytes_needed = 128 * 1024;
+        *services_returned = 0;
+        *resume_handle = 999;  // Ignore because no entry was consumed.
+        return ERROR_MORE_DATA;
+      }
+
+      Assert::IsTrue(buffer_size >= 128 * 1024);
+      auto* status =
+          reinterpret_cast<ENUM_SERVICE_STATUS_PROCESSW*>(buffer);
+      *status = {};
+      if (call_count == 2) {
+        Assert::AreEqual(0UL, *resume_handle);
+        status->lpServiceName = const_cast<LPWSTR>(L"FirstService");
+        status->lpDisplayName = const_cast<LPWSTR>(L"First Service");
+        status->ServiceStatusProcess.dwCurrentState = SERVICE_RUNNING;
+        status->ServiceStatusProcess.dwProcessId = 101;
+        *bytes_needed = 64 * 1024;
+        *services_returned = 1;
+        *resume_handle = 77;
+        return ERROR_MORE_DATA;
+      }
+
+      Assert::AreEqual(3, call_count);
+      Assert::AreEqual(77UL, *resume_handle);
+      status->lpServiceName = const_cast<LPWSTR>(L"SecondService");
+      status->lpDisplayName = const_cast<LPWSTR>(L"Second Service");
+      status->ServiceStatusProcess.dwCurrentState = SERVICE_STOPPED;
+      status->ServiceStatusProcess.dwProcessId = 0;
+      *bytes_needed = 0;
+      *services_returned = 1;
+      *resume_handle = 0;
+      return ERROR_SUCCESS;
+    };
+
+    std::vector<ServiceStatusRecord> records;
+    Assert::IsTrue(
+        EnumerateServiceStatusRecords(callback, nullptr, &records));
+    Assert::AreEqual(3, call_count);
+    Assert::AreEqual(2ULL, records.size());
+    Assert::AreEqual(std::wstring(L"FirstService"), records[0].service_name);
+    Assert::AreEqual(std::wstring(L"First Service"),
+                     records[0].display_name);
+    Assert::AreEqual(static_cast<DWORD>(SERVICE_RUNNING), records[0].state);
+    Assert::AreEqual(101UL, records[0].pid);
+    Assert::AreEqual(std::wstring(L"SecondService"),
+                     records[1].service_name);
+    Assert::AreEqual(static_cast<DWORD>(SERVICE_STOPPED), records[1].state);
   }
 
   TEST_METHOD(ServiceManagerService_EnumServices_ReturnsItems) {
