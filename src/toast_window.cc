@@ -57,6 +57,11 @@ void ToastWindow::ShowToast(
     RepositionToasts();
     // Play subtle system alert sound
     MessageBeep((level == EventLevel::kCritical) ? MB_ICONHAND : MB_ICONEXCLAMATION);
+  } else {
+    // A successfully created window owns the ToastWindow until
+    // WM_NCDESTROY. If window creation fails, no destroy message will release
+    // the object, so clean it up here.
+    delete toast;
   }
 }
 
@@ -134,6 +139,22 @@ LRESULT CALLBACK ToastWindow::WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
     return 0;
   }
 
+  if (msg == WM_NCDESTROY) {
+    // WM_NCDESTROY is the final message for the HWND. Detach the pointer
+    // before default processing and release the C++ object only after the
+    // window can no longer dispatch messages through it.
+    // During a failed CreateWindowExW call hwnd_ has not been assigned yet;
+    // in that case ShowToast still owns and releases the object.
+    bool window_owns_self = self && self->hwnd_ == hwnd;
+    SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+    LRESULT result = DefWindowProcW(hwnd, msg, wparam, lparam);
+    if (window_owns_self) {
+      self->hwnd_ = nullptr;
+      delete self;
+    }
+    return result;
+  }
+
   if (self) {
     return self->HandleMessage(hwnd, msg, wparam, lparam);
   }
@@ -202,7 +223,6 @@ LRESULT ToastWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
         }
       }
       RepositionToasts();
-      delete this;
       return 0;
     }
   }
