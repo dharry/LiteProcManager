@@ -616,6 +616,30 @@ TEST_CLASS(SettingsAndMonitorTests) {
     }
     Assert::IsTrue(found_rule);
 
+    // Saving to an existing file must atomically replace its contents.
+    settings.refresh_interval_seconds = 17;
+    settings.display_filter_enabled = true;
+    settings.display_filter_condition.column_id = ProcessColumnId::kName;
+    settings.display_filter_condition.op = ComparisonOperator::kEqual;
+    settings.display_filter_condition.string_value = L"日本語フィルター";
+    settings.SaveSettingsTo(test_settings_path);
+
+    AppSettings replaced = AppSettings::LoadFrom(test_settings_path, test_rules_path);
+    Assert::AreEqual(17, replaced.refresh_interval_seconds);
+    Assert::IsTrue(replaced.display_filter_enabled);
+    Assert::IsTrue(replaced.display_filter_condition.op ==
+                   ComparisonOperator::kEqual);
+    Assert::AreEqual(std::wstring(L"日本語フィルター"),
+                     replaced.display_filter_condition.string_value);
+
+    WIN32_FIND_DATAW find_data{};
+    HANDLE temporary_file = FindFirstFileW(
+        (test_settings_path + L".tmp.*").c_str(), &find_data);
+    Assert::AreEqual(INVALID_HANDLE_VALUE, temporary_file);
+    if (temporary_file != INVALID_HANDLE_VALUE) {
+      FindClose(temporary_file);
+    }
+
     DeleteFileW(test_settings_path.c_str());
     DeleteFileW(test_rules_path.c_str());
   }

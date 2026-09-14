@@ -6,14 +6,17 @@
 #include <shlobj.h>
 
 #include <algorithm>
+#include <atomic>
 #include <fstream>
-#include <sstream>
+#include <limits>
 
 #include "json_helper.h"
 
 namespace lite_proc_manager {
 
 namespace {
+std::atomic_uint32_t g_temporary_file_sequence{0};
+
 std::wstring ReadUtf8File(const std::wstring& path) {
   std::ifstream file(path, std::ios::binary);
   if (!file.is_open()) return L"";
@@ -30,26 +33,107 @@ std::wstring ReadUtf8File(const std::wstring& path) {
     utf8_content = utf8_content.substr(3);
   }
 
-  int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8_content.c_str(), -1, nullptr, 0);
-  if (wlen <= 1) return L"";
+  if (utf8_content.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return L"";
+  }
 
-  std::wstring wide_content(wlen - 1, L'\0');
-  MultiByteToWideChar(CP_UTF8, 0, utf8_content.c_str(), -1, &wide_content[0], wlen);
+  int wlen = MultiByteToWideChar(
+      CP_UTF8, MB_ERR_INVALID_CHARS, utf8_content.data(),
+      static_cast<int>(utf8_content.size()), nullptr, 0);
+  if (wlen <= 0) return L"";
+
+  std::wstring wide_content(wlen, L'\0');
+  if (MultiByteToWideChar(
+          CP_UTF8, MB_ERR_INVALID_CHARS, utf8_content.data(),
+          static_cast<int>(utf8_content.size()), wide_content.data(), wlen) != wlen) {
+    return L"";
+  }
   return wide_content;
 }
 
 bool WriteUtf8File(const std::wstring& path, const std::wstring& wide_content) {
-  int ulen = WideCharToMultiByte(CP_UTF8, 0, wide_content.c_str(), -1, nullptr, 0, nullptr, nullptr);
-  if (ulen <= 1) return false;
+  if (wide_content.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return false;
+  }
 
-  std::string utf8_content(ulen - 1, '\0');
-  WideCharToMultiByte(CP_UTF8, 0, wide_content.c_str(), -1, &utf8_content[0], ulen, nullptr, nullptr);
+  int ulen = WideCharToMultiByte(
+      CP_UTF8, WC_ERR_INVALID_CHARS, wide_content.data(),
+      static_cast<int>(wide_content.size()), nullptr, 0, nullptr, nullptr);
+  if (ulen <= 0) return false;
 
-  std::ofstream file(path, std::ios::binary | std::ios::trunc);
-  if (!file.is_open()) return false;
+  std::string utf8_content(ulen, '\0');
+  if (WideCharToMultiByte(
+          CP_UTF8, WC_ERR_INVALID_CHARS, wide_content.data(),
+          static_cast<int>(wide_content.size()), utf8_content.data(), ulen,
+          nullptr, nullptr) != ulen) {
+    return false;
+  }
 
-  file.write(utf8_content.data(), utf8_content.size());
-  return true;
+  std::wstring temporary_path;
+  HANDLE temporary_file = INVALID_HANDLE_VALUE;
+  for (int attempt = 0; attempt < 16; ++attempt) {
+    uint32_t sequence = g_temporary_file_sequence.fetch_add(1, std::memory_order_relaxed);
+    temporary_path = path + L".tmp." + std::to_wstring(GetCurrentProcessId()) +
+                     L"." + std::to_wstring(sequence);
+    temporary_file = CreateFileW(
+        temporary_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+        FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (temporary_file != INVALID_HANDLE_VALUE) {
+      break;
+    }
+    DWORD create_error = GetLastError();
+    if (create_error != ERROR_FILE_EXISTS &&
+        create_error != ERROR_ALREADY_EXISTS) {
+      return false;
+    }
+  }
+  if (temporary_file == INVALID_HANDLE_VALUE) {
+    return false;
+  }
+
+  bool write_succeeded = true;
+  size_t written_total = 0;
+  while (written_total < utf8_content.size()) {
+    size_t remaining = utf8_content.size() - written_total;
+    DWORD write_size = static_cast<DWORD>(std::min<size_t>(
+        remaining, std::numeric_limits<DWORD>::max()));
+    DWORD bytes_written = 0;
+    if (!WriteFile(temporary_file, utf8_content.data() + written_total,
+                   write_size, &bytes_written, nullptr) ||
+        bytes_written == 0) {
+      write_succeeded = false;
+      break;
+    }
+    written_total += bytes_written;
+  }
+
+  if (write_succeeded && !FlushFileBuffers(temporary_file)) {
+    write_succeeded = false;
+  }
+  if (!CloseHandle(temporary_file)) {
+    write_succeeded = false;
+  }
+
+  if (!write_succeeded) {
+    DeleteFileW(temporary_path.c_str());
+    return false;
+  }
+
+  if (ReplaceFileW(path.c_str(), temporary_path.c_str(), nullptr, 0,
+                   nullptr, nullptr)) {
+    return true;
+  }
+
+  DWORD replace_error = GetLastError();
+  if ((replace_error == ERROR_FILE_NOT_FOUND ||
+       replace_error == ERROR_PATH_NOT_FOUND) &&
+      MoveFileExW(temporary_path.c_str(), path.c_str(),
+                  MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    return true;
+  }
+
+  DeleteFileW(temporary_path.c_str());
+  return false;
 }
 }  // namespace
 

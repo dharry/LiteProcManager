@@ -78,6 +78,8 @@ class MainWindow {
   void UpdateStatusLabels();
   void ApplyConditionFilter();
   void OnFilterConditionChanged();
+  void ScheduleFilterSettingsSave();
+  void FlushPendingFilterSettingsSave();
   void ApplyFilterAndDisplay();
   void UpdateListView(const ProcessListViewState* preserved_state = nullptr);
   void UpdateTreeView(const ProcessTreeViewState* preserved_state = nullptr);
@@ -195,6 +197,7 @@ class MainWindow {
   std::optional<ProcessTreeViewState> saved_tree_view_state_;
   bool list_view_data_current_{false};
   bool tree_view_data_current_{false};
+  bool filter_settings_save_pending_{false};
   SystemTotals totals_;
 
   int sort_column_index_{0};

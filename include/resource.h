@@ -166,6 +166,7 @@
 // Timers & Messages
 #define IDT_REFRESH_TIMER               501
 #define IDT_SEARCH_DEBOUNCE_TIMER       502
+#define IDT_FILTER_SAVE_TIMER           503
 #define WM_APP_TRAYMSG                  (WM_APP + 1)
 #define WM_APP_SERVICE_SNAPSHOT_READY   (WM_APP + 2)
 

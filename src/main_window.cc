@@ -39,6 +39,7 @@ namespace lite_proc_manager {
 
 namespace {
 constexpr UINT kSearchDebounceMilliseconds = 150;
+constexpr UINT kFilterSaveDebounceMilliseconds = 500;
 
 struct ServiceSnapshotMessage {
   uint64_t generation{0};
@@ -986,7 +987,7 @@ void MainWindow::OnFilterConditionChanged() {
     }
   }
 
-  settings_.SaveSettings();
+  ScheduleFilterSettingsSave();
   ApplyConditionFilter();
   ApplyFilterAndDisplay();
   if (filter_val_edit_) {
@@ -1105,6 +1106,25 @@ void MainWindow::ApplyFilterAndDisplay() {
     list_view_data_current_ = true;
     tree_view_data_current_ = false;
   }
+}
+
+void MainWindow::ScheduleFilterSettingsSave() {
+  filter_settings_save_pending_ = true;
+  KillTimer(hwnd_, IDT_FILTER_SAVE_TIMER);
+  if (SetTimer(hwnd_, IDT_FILTER_SAVE_TIMER,
+               kFilterSaveDebounceMilliseconds, nullptr) == 0) {
+    FlushPendingFilterSettingsSave();
+  }
+}
+
+void MainWindow::FlushPendingFilterSettingsSave() {
+  KillTimer(hwnd_, IDT_FILTER_SAVE_TIMER);
+  if (!filter_settings_save_pending_) {
+    return;
+  }
+
+  settings_.SaveSettings();
+  filter_settings_save_pending_ = false;
 }
 
 void MainWindow::SortItems() {
@@ -1784,6 +1804,8 @@ void MainWindow::ApplyTheme() {
 }
 
 void MainWindow::RestartApplication() {
+  FlushPendingFilterSettingsSave();
+
   wchar_t exe_path[MAX_PATH] = {0};
   GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
 
@@ -1802,6 +1824,8 @@ void MainWindow::RestartApplication() {
 
 void MainWindow::RestartAsAdministrator() {
   if (is_elevated_) return;
+
+  FlushPendingFilterSettingsSave();
 
   wchar_t exe_path[MAX_PATH] = {0};
   if (GetModuleFileNameW(nullptr, exe_path, MAX_PATH) > 0) {
@@ -2948,6 +2972,8 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
         } else {
           ApplyFilterAndDisplay();
         }
+      } else if (wparam == IDT_FILTER_SAVE_TIMER) {
+        FlushPendingFilterSettingsSave();
       }
       return 0;
     }
@@ -2985,10 +3011,15 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
         return 0;
       }
 
+      if (id == IDC_FILTER_VAL_EDIT && code == EN_KILLFOCUS) {
+        FlushPendingFilterSettingsSave();
+        return 0;
+      }
+
       if (id == IDC_FILTER_CLEAR_BTN) {
         SetWindowTextW(filter_val_edit_, L"");
         settings_.display_filter_enabled = false;
-        settings_.SaveSettings();
+        ScheduleFilterSettingsSave();
         ApplyConditionFilter();
         ApplyFilterAndDisplay();
         InvalidateRect(filter_val_edit_, nullptr, TRUE);
@@ -3403,12 +3434,15 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
       if (pending_theme_change_.has_value()) {
         settings_.theme = pending_theme_change_.value();
       }
+      KillTimer(hwnd_, IDT_FILTER_SAVE_TIMER);
+      filter_settings_save_pending_ = false;
       settings_.SaveSettings();
       DestroyWindow(hwnd_);
       return 0;
     }
 
     case WM_DESTROY: {
+      FlushPendingFilterSettingsSave();
       StopServiceRefreshWorker();
       HWND header = ListView_GetHeader(listview_hwnd_);
       if (header) {
@@ -3416,6 +3450,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
       }
       KillTimer(hwnd_, IDT_REFRESH_TIMER);
       KillTimer(hwnd_, IDT_SEARCH_DEBOUNCE_TIMER);
+      KillTimer(hwnd_, IDT_FILTER_SAVE_TIMER);
       PostQuitMessage(0);
       return 0;
     }
