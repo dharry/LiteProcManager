@@ -106,6 +106,7 @@
     <ClInclude Include="..\include\theme_manager.h" />
     <ClInclude Include="..\include\toast_window.h" />
     <ClInclude Include="..\include\tsv_helper.h" />
+    <ClInclude Include="..\include\url_helper.h" />
     <ClInclude Include="..\include\version.h" />
     <ClInclude Include="..\third_party\jsoncpp\include\json\json.h" />
   </ItemGroup>

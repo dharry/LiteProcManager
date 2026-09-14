@@ -24,6 +24,7 @@
 #include "process_export.h"
 #include "resource.h"
 #include "theme_manager.h"
+#include "url_helper.h"
 #include "version.h"
 
 #pragma comment(lib, "comctl32.lib")
@@ -1722,7 +1723,10 @@ void MainWindow::SearchSelectedProcessOnline() {
   auto proc = GetSelectedProcess();
   if (!proc) return;
 
-  std::wstring url = L"https://www.google.com/search?q=" + proc->name + L"+process";
+  auto encoded_query = PercentEncodeUrlComponent(proc->name + L" process");
+  if (!encoded_query.has_value()) return;
+
+  std::wstring url = L"https://www.google.com/search?q=" + *encoded_query;
   ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 

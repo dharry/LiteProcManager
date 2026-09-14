@@ -23,6 +23,7 @@
 #include "../include/service_item.h"
 #include "../include/service_manager_service.h"
 #include "../include/tsv_helper.h"
+#include "../include/url_helper.h"
 #include "../include/version.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -50,6 +51,33 @@ FILETIME MakeFileTime(uint64_t value) {
   time.QuadPart = value;
   return FILETIME{time.LowPart, time.HighPart};
 }
+
+TEST_CLASS(UrlHelperTests) {
+ public:
+  TEST_METHOD(PercentEncode_ShouldPreserveOnlyUnreservedCharacters) {
+    auto encoded = PercentEncodeUrlComponent(
+        L"LiteProcManager.exe AZaz09-._~ process");
+    Assert::IsTrue(encoded.has_value());
+    Assert::AreEqual(
+        std::wstring(L"LiteProcManager.exe%20AZaz09-._~%20process"),
+        *encoded);
+  }
+
+  TEST_METHOD(PercentEncode_ShouldEncodeReservedAndUnicodeCharacters) {
+    auto encoded = PercentEncodeUrlComponent(L"日本語&name#100%.exe");
+    Assert::IsTrue(encoded.has_value());
+    Assert::AreEqual(
+        std::wstring(
+            L"%E6%97%A5%E6%9C%AC%E8%AA%9E%26name%23100%25.exe"),
+        *encoded);
+  }
+
+  TEST_METHOD(PercentEncode_ShouldRejectInvalidUtf16) {
+    std::wstring invalid_utf16(1, static_cast<wchar_t>(0xD800));
+    Assert::IsFalse(
+        PercentEncodeUrlComponent(invalid_utf16).has_value());
+  }
+};
 
 TEST_CLASS(IconHelperTests) {
  public:
