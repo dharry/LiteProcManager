@@ -52,6 +52,66 @@ void EnableDebugPrivilege() {
     CloseHandle(token);
   }
 }
+
+bool IsValidParentRelationship(const ProcessItem& parent, const ProcessItem& child) {
+  if (parent.process_id == child.process_id ||
+      !parent.start_time.has_value() || !child.start_time.has_value()) {
+    return false;
+  }
+
+  return CompareFileTime(&parent.start_time.value(), &child.start_time.value()) < 0;
+}
+
+bool IsSameProcess(const ProcessItem& first, const ProcessItem& second) {
+  return first.process_id == second.process_id &&
+         first.start_time.has_value() && second.start_time.has_value() &&
+         CompareFileTime(&first.start_time.value(), &second.start_time.value()) == 0;
+}
+
+bool ParentChainContains(
+    uint32_t child_pid,
+    uint32_t parent_pid,
+    const std::unordered_map<uint32_t, std::shared_ptr<ProcessItem>>& item_map) {
+  std::unordered_set<uint32_t> visited;
+  uint32_t current_pid = parent_pid;
+  while (current_pid != 0) {
+    if (current_pid == child_pid || !visited.insert(current_pid).second) {
+      return true;
+    }
+
+    auto current = item_map.find(current_pid);
+    if (current == item_map.end() || !current->second) {
+      return false;
+    }
+    current_pid = current->second->parent_process_id;
+  }
+  return false;
+}
+
+HANDLE OpenVerifiedProcess(const ProcessItem& process, DWORD desired_access) {
+  if (process.process_id == 0 || !process.start_time.has_value()) {
+    return nullptr;
+  }
+
+  HANDLE process_handle = OpenProcess(
+      desired_access | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process.process_id);
+  if (!process_handle) {
+    return nullptr;
+  }
+
+  FILETIME creation_time{};
+  FILETIME exit_time{};
+  FILETIME kernel_time{};
+  FILETIME user_time{};
+  if (!GetProcessTimes(process_handle, &creation_time, &exit_time,
+                       &kernel_time, &user_time) ||
+      CompareFileTime(&creation_time, &process.start_time.value()) != 0) {
+    CloseHandle(process_handle);
+    return nullptr;
+  }
+
+  return process_handle;
+}
 }  // namespace
 
 ProcessSnapshotService::ProcessSnapshotService() {
@@ -498,38 +558,86 @@ std::wstring ProcessSnapshotService::QueryProcessUser(HANDLE process_handle) {
   return result;
 }
 
-bool ProcessSnapshotService::TerminateProcessById(uint32_t pid) {
-  HANDLE process_handle = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+bool ProcessSnapshotService::TerminateProcess(const ProcessItem& process) {
+  HANDLE process_handle = OpenVerifiedProcess(process, PROCESS_TERMINATE);
   if (!process_handle) return false;
 
-  BOOL success = TerminateProcess(process_handle, 1);
+  BOOL success = ::TerminateProcess(process_handle, 1);
   CloseHandle(process_handle);
   return success != FALSE;
 }
 
 bool ProcessSnapshotService::TerminateProcessTree(
-    uint32_t root_pid, const std::vector<std::shared_ptr<ProcessItem>>& all_items) {
-  std::unordered_map<uint32_t, std::vector<uint32_t>> child_map;
+    const ProcessItem& root_process,
+    const std::vector<std::shared_ptr<ProcessItem>>& all_items) {
+  std::unordered_map<uint32_t, std::shared_ptr<ProcessItem>> item_map;
+  std::unordered_set<uint32_t> duplicate_pids;
   for (const auto& item : all_items) {
-    child_map[item->parent_process_id].push_back(item->process_id);
+    if (!item) continue;
+    auto insertion = item_map.emplace(item->process_id, item);
+    if (!insertion.second) {
+      duplicate_pids.insert(item->process_id);
+    }
   }
 
-  auto kill_children = [&child_map](auto& self, uint32_t pid) -> void {
-    auto it = child_map.find(pid);
-    if (it != child_map.end()) {
-      for (uint32_t child_pid : it->second) {
-        self(self, child_pid);
-        TerminateProcessById(child_pid);
+  std::unordered_map<const ProcessItem*, std::vector<const ProcessItem*>> child_map;
+  for (const auto& item : all_items) {
+    if (!item || duplicate_pids.find(item->process_id) != duplicate_pids.end() ||
+        duplicate_pids.find(item->parent_process_id) != duplicate_pids.end()) {
+      continue;
+    }
+
+    auto parent = item_map.find(item->parent_process_id);
+    if (parent != item_map.end() && parent->second &&
+        IsValidParentRelationship(*parent->second, *item) &&
+        !ParentChainContains(item->process_id, item->parent_process_id, item_map)) {
+      child_map[parent->second.get()].push_back(item.get());
+    }
+  }
+
+  const ProcessItem* traversal_root = &root_process;
+  auto current_root = item_map.find(root_process.process_id);
+  if (current_root != item_map.end() && current_root->second &&
+      duplicate_pids.find(root_process.process_id) == duplicate_pids.end() &&
+      IsSameProcess(root_process, *current_root->second)) {
+    traversal_root = current_root->second.get();
+  }
+
+  std::vector<std::pair<const ProcessItem*, bool>> pending;
+  pending.emplace_back(traversal_root, false);
+  std::unordered_set<uint32_t> visited;
+  bool success = true;
+
+  while (!pending.empty()) {
+    auto [process, children_queued] = pending.back();
+    pending.pop_back();
+
+    if (children_queued) {
+      if (!TerminateProcess(*process)) {
+        success = false;
+      }
+      continue;
+    }
+
+    if (!visited.insert(process->process_id).second) {
+      continue;
+    }
+
+    pending.emplace_back(process, true);
+    auto children = child_map.find(process);
+    if (children != child_map.end()) {
+      for (const ProcessItem* child : children->second) {
+        pending.emplace_back(child, false);
       }
     }
-  };
+  }
 
-  kill_children(kill_children, root_pid);
-  return TerminateProcessById(root_pid);
+  return success;
 }
 
-bool ProcessSnapshotService::SetPriority(uint32_t pid, ProcessPriorityClass priority) {
-  HANDLE process_handle = OpenProcess(PROCESS_SET_INFORMATION, FALSE, pid);
+bool ProcessSnapshotService::SetPriority(
+    const ProcessItem& process, ProcessPriorityClass priority) {
+  HANDLE process_handle = OpenVerifiedProcess(process, PROCESS_SET_INFORMATION);
   if (!process_handle) return false;
 
   BOOL success = SetPriorityClass(process_handle, static_cast<DWORD>(priority));
@@ -540,16 +648,26 @@ bool ProcessSnapshotService::SetPriority(uint32_t pid, ProcessPriorityClass prio
 std::vector<std::shared_ptr<ProcessItem>> ProcessSnapshotService::BuildProcessTree(
     const std::vector<std::shared_ptr<ProcessItem>>& flat_items) {
   std::unordered_map<uint32_t, std::shared_ptr<ProcessItem>> item_map;
+  std::unordered_set<uint32_t> duplicate_pids;
   for (const auto& item : flat_items) {
+    if (!item) continue;
     item->children.clear();
-    item_map[item->process_id] = item;
+    auto insertion = item_map.emplace(item->process_id, item);
+    if (!insertion.second) {
+      duplicate_pids.insert(item->process_id);
+    }
   }
 
   std::vector<std::shared_ptr<ProcessItem>> roots;
   for (const auto& item : flat_items) {
+    if (!item) continue;
     if (item->parent_process_id != 0) {
       auto it = item_map.find(item->parent_process_id);
-      if (it != item_map.end() && it->second != item) {
+      if (duplicate_pids.find(item->process_id) == duplicate_pids.end() &&
+          duplicate_pids.find(item->parent_process_id) == duplicate_pids.end() &&
+          it != item_map.end() && it->second != item &&
+          IsValidParentRelationship(*it->second, *item) &&
+          !ParentChainContains(item->process_id, item->parent_process_id, item_map)) {
         it->second->children.push_back(item);
         continue;
       }

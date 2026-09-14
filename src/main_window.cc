@@ -1313,7 +1313,7 @@ void MainWindow::EndSelectedProcess() {
                   MB_YESNO | MB_ICONWARNING) == IDYES) {
     int fail_count = 0;
     for (const auto& p : valid_procs) {
-      if (!ProcessSnapshotService::TerminateProcessById(p->process_id)) {
+      if (!ProcessSnapshotService::TerminateProcess(*p)) {
         fail_count++;
       }
     }
@@ -1350,7 +1350,7 @@ void MainWindow::EndSelectedProcessTree() {
                   MB_YESNO | MB_ICONWARNING) == IDYES) {
     int fail_count = 0;
     for (const auto& p : valid_procs) {
-      if (!snapshot_service_.TerminateProcessTree(p->process_id, all_processes_)) {
+      if (!snapshot_service_.TerminateProcessTree(*p, all_processes_)) {
         fail_count++;
       }
     }
@@ -1375,7 +1375,7 @@ void MainWindow::SetSelectedProcessPriority(ProcessPriorityClass priority) {
     }
   }
 
-  if (ProcessSnapshotService::SetPriority(proc->process_id, priority)) {
+  if (ProcessSnapshotService::SetPriority(*proc, priority)) {
     proc->priority = priority;
     RefreshData();
   } else {

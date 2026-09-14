@@ -41,6 +41,12 @@ inline std::wstring ToString<AppTheme>(const AppTheme& q) {
 
 namespace LiteProcManagerTests {
 
+FILETIME MakeFileTime(uint64_t value) {
+  ULARGE_INTEGER time{};
+  time.QuadPart = value;
+  return FILETIME{time.LowPart, time.HighPart};
+}
+
 TEST_CLASS(ProcessSnapshotTests) {
  public:
   TEST_METHOD(ShouldRetrieveProcessList) {
@@ -132,24 +138,28 @@ TEST_CLASS(ProcessItemTests) {
     auto p1 = std::make_shared<ProcessItem>();
     p1->process_id = 1;
     p1->parent_process_id = 0;
+    p1->start_time = MakeFileTime(100);
     p1->name = L"Root";
     flat_list.push_back(p1);
 
     auto p2 = std::make_shared<ProcessItem>();
     p2->process_id = 2;
     p2->parent_process_id = 1;
+    p2->start_time = MakeFileTime(200);
     p2->name = L"Child1";
     flat_list.push_back(p2);
 
     auto p3 = std::make_shared<ProcessItem>();
     p3->process_id = 3;
     p3->parent_process_id = 1;
+    p3->start_time = MakeFileTime(300);
     p3->name = L"Child2";
     flat_list.push_back(p3);
 
     auto p4 = std::make_shared<ProcessItem>();
     p4->process_id = 4;
     p4->parent_process_id = 2;
+    p4->start_time = MakeFileTime(400);
     p4->name = L"GrandChild";
     flat_list.push_back(p4);
 
@@ -160,6 +170,68 @@ TEST_CLASS(ProcessItemTests) {
     Assert::AreEqual(2ULL, roots[0]->children.size());
     Assert::AreEqual(1ULL, roots[0]->children[0]->children.size());
     Assert::AreEqual(4U, roots[0]->children[0]->children[0]->process_id);
+  }
+
+  TEST_METHOD(Build_ShouldRejectReusedParentPid) {
+    auto child = std::make_shared<ProcessItem>();
+    child->process_id = 20;
+    child->parent_process_id = 10;
+    child->start_time = MakeFileTime(100);
+
+    auto reused_parent = std::make_shared<ProcessItem>();
+    reused_parent->process_id = 10;
+    reused_parent->parent_process_id = 0;
+    reused_parent->start_time = MakeFileTime(200);
+
+    auto roots = ProcessSnapshotService::BuildProcessTree({child, reused_parent});
+
+    Assert::AreEqual(2ULL, roots.size());
+    Assert::IsTrue(reused_parent->children.empty());
+  }
+
+  TEST_METHOD(Build_ShouldRejectParentCycles) {
+    auto first = std::make_shared<ProcessItem>();
+    first->process_id = 1;
+    first->parent_process_id = 2;
+    first->start_time = MakeFileTime(100);
+
+    auto second = std::make_shared<ProcessItem>();
+    second->process_id = 2;
+    second->parent_process_id = 1;
+    second->start_time = MakeFileTime(200);
+
+    auto roots = ProcessSnapshotService::BuildProcessTree({first, second});
+
+    Assert::AreEqual(2ULL, roots.size());
+    Assert::IsTrue(first->children.empty());
+    Assert::IsTrue(second->children.empty());
+  }
+
+  TEST_METHOD(SetPriority_ShouldRejectMismatchedStartTime) {
+    ProcessItem current_process;
+    current_process.process_id = GetCurrentProcessId();
+
+    FILETIME creation_time{};
+    FILETIME exit_time{};
+    FILETIME kernel_time{};
+    FILETIME user_time{};
+    Assert::IsTrue(GetProcessTimes(GetCurrentProcess(), &creation_time, &exit_time,
+                                   &kernel_time, &user_time) != FALSE);
+    current_process.start_time = creation_time;
+
+    DWORD priority = GetPriorityClass(GetCurrentProcess());
+    Assert::AreNotEqual(0UL, priority);
+    Assert::IsTrue(ProcessSnapshotService::SetPriority(
+        current_process, static_cast<ProcessPriorityClass>(priority)));
+
+    ULARGE_INTEGER wrong_time{};
+    wrong_time.LowPart = creation_time.dwLowDateTime;
+    wrong_time.HighPart = creation_time.dwHighDateTime;
+    ++wrong_time.QuadPart;
+    current_process.start_time = FILETIME{wrong_time.LowPart, wrong_time.HighPart};
+
+    Assert::IsFalse(ProcessSnapshotService::SetPriority(
+        current_process, static_cast<ProcessPriorityClass>(priority)));
   }
 
   TEST_METHOD(FormatBytes_ShouldFormatProperly) {

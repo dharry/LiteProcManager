@@ -38,9 +38,11 @@ class ProcessSnapshotService {
 
   SnapshotResult GetSnapshot();
 
-  static bool TerminateProcessById(uint32_t pid);
-  bool TerminateProcessTree(uint32_t root_pid, const std::vector<std::shared_ptr<ProcessItem>>& all_items);
-  static bool SetPriority(uint32_t pid, ProcessPriorityClass priority);
+  static bool TerminateProcess(const ProcessItem& process);
+  bool TerminateProcessTree(
+      const ProcessItem& root_process,
+      const std::vector<std::shared_ptr<ProcessItem>>& all_items);
+  static bool SetPriority(const ProcessItem& process, ProcessPriorityClass priority);
   static std::vector<std::shared_ptr<ProcessItem>> BuildProcessTree(const std::vector<std::shared_ptr<ProcessItem>>& flat_items);
 
  private:
