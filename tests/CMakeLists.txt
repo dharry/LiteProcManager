@@ -9,6 +9,7 @@ set(TEST_SOURCES
     ../src/monitor_service.cc
     ../src/toast_window.cc
     ../src/app_settings.cc
+    ../third_party/jsoncpp/src/jsoncpp.cpp
     ../src/resource.rc
 )
 
@@ -16,6 +17,7 @@ add_library(LiteProcManagerTests SHARED ${TEST_SOURCES})
 
 target_include_directories(LiteProcManagerTests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/jsoncpp/include
 )
 
 target_link_libraries(LiteProcManagerTests PRIVATE

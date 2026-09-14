@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <string>
 #include <thread>
@@ -608,6 +609,66 @@ TEST_CLASS(SettingsAndMonitorTests) {
     Assert::IsTrue(val2.is_object());
     Assert::AreEqual(std::wstring(L"ProcessManager"), val2[L"Name"].as_string());
     Assert::AreEqual(std::wstring(L"日本語テスト"), val2[L"Items"].as_array()[2].as_string());
+  }
+
+  TEST_METHOD(JsonHelper_ShouldEnforceStandardJsonSyntax) {
+    const std::vector<std::wstring> invalid_json = {
+        L"{\"value\": 1} trailing",
+        L"{\"value\": 1",
+        L"\"unterminated",
+        L"{\"value\": 1,}",
+        L"[1,,2]",
+        L"\"\\q\"",
+        L"\"line\nbreak\"",
+        L"{\"duplicate\": 1, \"duplicate\": 2}",
+        L"01",
+        L"1.",
+        L"1e",
+    };
+
+    for (const auto& input : invalid_json) {
+      JsonValue parsed;
+      std::wstring error;
+      Assert::IsFalse(JsonValue::TryParse(input, &parsed, &error),
+                      input.c_str());
+      Assert::IsFalse(error.empty(), input.c_str());
+    }
+
+    JsonValue unicode;
+    Assert::IsTrue(JsonValue::TryParse(
+        L"\"\\u65e5\\u672c\\ud83d\\ude00\"", &unicode));
+    Assert::AreEqual(std::wstring(L"日本😀"), unicode.as_string());
+
+    JsonValue scalar;
+    Assert::IsTrue(JsonValue::TryParse(L"42", &scalar));
+    Assert::AreEqual(42, scalar.as_int());
+
+    JsonValue maximum_integer;
+    Assert::IsTrue(JsonValue::TryParse(
+        L"18446744073709551615", &maximum_integer));
+    Assert::AreEqual(std::wstring(L"18446744073709551615"),
+                     maximum_integer.Serialize(0));
+
+    JsonValue non_finite(std::numeric_limits<double>::infinity());
+    Assert::AreEqual(std::wstring(L"null"), non_finite.Serialize(0));
+  }
+
+  TEST_METHOD(JsonHelper_ShouldRejectExcessiveNestingAndInputSize) {
+    std::wstring nested(129, L'[');
+    nested += L"0";
+    nested.append(129, L']');
+
+    JsonValue parsed;
+    std::wstring error;
+    Assert::IsFalse(JsonValue::TryParse(nested, &parsed, &error));
+    Assert::IsFalse(error.empty());
+
+    std::wstring oversized = L"\"";
+    oversized.append(4 * 1024 * 1024, L'a');
+    oversized += L"\"";
+    error.clear();
+    Assert::IsFalse(JsonValue::TryParse(oversized, &parsed, &error));
+    Assert::IsFalse(error.empty());
   }
 
   TEST_METHOD(AppSettings_JsonSaveAndLoad) {

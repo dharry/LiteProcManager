@@ -15,14 +15,24 @@
 namespace lite_proc_manager {
 
 namespace {
+constexpr std::streamoff kMaximumJsonFileBytes = 4 * 1024 * 1024;
 std::atomic_uint32_t g_temporary_file_sequence{0};
 
 std::wstring ReadUtf8File(const std::wstring& path) {
   std::ifstream file(path, std::ios::binary);
   if (!file.is_open()) return L"";
 
-  std::string utf8_content((std::istreambuf_iterator<char>(file)),
-                           std::istreambuf_iterator<char>());
+  file.seekg(0, std::ios::end);
+  std::streamoff file_size = file.tellg();
+  if (file_size <= 0 || file_size > kMaximumJsonFileBytes) {
+    return L"";
+  }
+  file.seekg(0, std::ios::beg);
+
+  std::string utf8_content(static_cast<size_t>(file_size), '\0');
+  if (!file.read(utf8_content.data(), file_size)) {
+    return L"";
+  }
   if (utf8_content.empty()) return L"";
 
   // Strip UTF-8 BOM if present

@@ -14,6 +14,7 @@ set(SOURCES
     app_settings.cc
     options_dialog.cc
     language_manager.cc
+    ../third_party/jsoncpp/src/jsoncpp.cpp
     resource.rc
 )
 
@@ -21,6 +22,7 @@ add_executable(LiteProcManager WIN32 ${SOURCES})
 
 target_include_directories(LiteProcManager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/jsoncpp/include
 )
 
 target_link_libraries(LiteProcManager PRIVATE

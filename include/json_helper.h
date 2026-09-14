@@ -1,17 +1,22 @@
-﻿// Copyright 2026 LiteProcManager Authors. All rights reserved.
+// Copyright 2026 LiteProcManager Authors. All rights reserved.
 
 #ifndef LITE_PROC_MANAGER_JSON_HELPER_H_
 #define LITE_PROC_MANAGER_JSON_HELPER_H_
 
-#include <windows.h>
-#include <cctype>
+#include <json/json.h>
+
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
-#include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
+
+#include <windows.h>
 
 namespace lite_proc_manager {
 
@@ -28,289 +33,444 @@ enum class JsonType {
   kObject,
 };
 
+// Compatibility wrapper around JsonCpp. All parsing and serialization is
+// delegated to JsonCpp; the wide-string API is retained for existing callers.
 class JsonValue {
  public:
-  JsonValue() : type_(JsonType::kNull) {}
-  JsonValue(bool b) : type_(JsonType::kBoolean), bool_val_(b) {}
-  JsonValue(int i) : type_(JsonType::kNumber), num_val_(static_cast<double>(i)) {}
-  JsonValue(uint32_t u) : type_(JsonType::kNumber), num_val_(static_cast<double>(u)) {}
-  JsonValue(int64_t i) : type_(JsonType::kNumber), num_val_(static_cast<double>(i)) {}
-  JsonValue(uint64_t u) : type_(JsonType::kNumber), num_val_(static_cast<double>(u)) {}
-  JsonValue(double d) : type_(JsonType::kNumber), num_val_(d) {}
-  JsonValue(const wchar_t* s) : type_(JsonType::kString), str_val_(s ? s : L"") {}
-  JsonValue(std::wstring s) : type_(JsonType::kString), str_val_(std::move(s)) {}
-  JsonValue(JsonArray arr) : type_(JsonType::kArray), arr_val_(std::move(arr)) {}
-  JsonValue(JsonObject obj) : type_(JsonType::kObject), obj_val_(std::move(obj)) {}
+  JsonValue() = default;
+  JsonValue(bool value) : value_(value) {}
+  JsonValue(int value) : value_(value) {}
+  JsonValue(uint32_t value) : value_(value) {}
+  JsonValue(int64_t value) : value_(Json::Int64(value)) {}
+  JsonValue(uint64_t value) : value_(Json::UInt64(value)) {}
+  JsonValue(double value) {
+    if (std::isfinite(value)) {
+      value_ = value;
+    }
+  }
+  JsonValue(const wchar_t* value)
+      : JsonValue(std::wstring(value != nullptr ? value : L"")) {}
+  JsonValue(std::wstring value) {
+    std::string utf8;
+    if (WideToUtf8(value, &utf8)) {
+      value_ = std::move(utf8);
+    }
+  }
+  JsonValue(JsonArray values) : value_(Json::arrayValue) {
+    for (const auto& value : values) {
+      value_.append(value.value_);
+    }
+  }
+  JsonValue(JsonObject values) : value_(Json::objectValue) {
+    for (const auto& pair : values) {
+      std::string key;
+      if (WideToUtf8(pair.first, &key)) {
+        value_[key] = pair.second.value_;
+      }
+    }
+  }
 
-  JsonType type() const { return type_; }
-  bool is_null() const { return type_ == JsonType::kNull; }
-  bool is_bool() const { return type_ == JsonType::kBoolean; }
-  bool is_number() const { return type_ == JsonType::kNumber; }
-  bool is_string() const { return type_ == JsonType::kString; }
-  bool is_array() const { return type_ == JsonType::kArray; }
-  bool is_object() const { return type_ == JsonType::kObject; }
+  JsonType type() const {
+    switch (value_.type()) {
+      case Json::booleanValue:
+        return JsonType::kBoolean;
+      case Json::intValue:
+      case Json::uintValue:
+      case Json::realValue:
+        return JsonType::kNumber;
+      case Json::stringValue:
+        return JsonType::kString;
+      case Json::arrayValue:
+        return JsonType::kArray;
+      case Json::objectValue:
+        return JsonType::kObject;
+      case Json::nullValue:
+      default:
+        return JsonType::kNull;
+    }
+  }
 
-  bool as_bool(bool def = false) const { return is_bool() ? bool_val_ : def; }
-  int as_int(int def = 0) const { return is_number() ? static_cast<int>(num_val_) : def; }
-  uint32_t as_uint(uint32_t def = 0) const { return is_number() ? static_cast<uint32_t>(num_val_) : def; }
-  int64_t as_int64(int64_t def = 0) const { return is_number() ? static_cast<int64_t>(num_val_) : def; }
-  double as_double(double def = 0.0) const { return is_number() ? num_val_ : def; }
-  std::wstring as_string(const std::wstring& def = L"") const { return is_string() ? str_val_ : def; }
+  bool is_null() const { return value_.isNull(); }
+  bool is_bool() const { return value_.isBool(); }
+  bool is_number() const { return value_.isNumeric(); }
+  bool is_string() const { return value_.isString(); }
+  bool is_array() const { return value_.isArray(); }
+  bool is_object() const { return value_.isObject(); }
 
-  const JsonArray& as_array() const { return arr_val_; }
-  const JsonObject& as_object() const { return obj_val_; }
+  bool as_bool(bool default_value = false) const {
+    return value_.isBool() ? value_.asBool() : default_value;
+  }
+
+  int as_int(int default_value = 0) const {
+    if (value_.isInt64()) {
+      Json::Int64 number = value_.asInt64();
+      if (number >= std::numeric_limits<int>::min() &&
+          number <= std::numeric_limits<int>::max()) {
+        return static_cast<int>(number);
+      }
+    } else if (value_.isUInt64()) {
+      Json::UInt64 number = value_.asUInt64();
+      if (number <= static_cast<Json::UInt64>(std::numeric_limits<int>::max())) {
+        return static_cast<int>(number);
+      }
+    }
+    return default_value;
+  }
+
+  uint32_t as_uint(uint32_t default_value = 0) const {
+    if (value_.isUInt64()) {
+      Json::UInt64 number = value_.asUInt64();
+      if (number <= std::numeric_limits<uint32_t>::max()) {
+        return static_cast<uint32_t>(number);
+      }
+    } else if (value_.isInt64()) {
+      Json::Int64 number = value_.asInt64();
+      if (number >= 0 &&
+          static_cast<Json::UInt64>(number) <=
+              std::numeric_limits<uint32_t>::max()) {
+        return static_cast<uint32_t>(number);
+      }
+    }
+    return default_value;
+  }
+
+  int64_t as_int64(int64_t default_value = 0) const {
+    if (value_.isInt64()) {
+      return static_cast<int64_t>(value_.asInt64());
+    }
+    if (value_.isUInt64()) {
+      Json::UInt64 number = value_.asUInt64();
+      if (number <= static_cast<Json::UInt64>(
+                        std::numeric_limits<int64_t>::max())) {
+        return static_cast<int64_t>(number);
+      }
+    }
+    return default_value;
+  }
+
+  double as_double(double default_value = 0.0) const {
+    if (!value_.isNumeric()) {
+      return default_value;
+    }
+    double number = value_.asDouble();
+    return std::isfinite(number) ? number : default_value;
+  }
+
+  std::wstring as_string(const std::wstring& default_value = L"") const {
+    if (!value_.isString()) {
+      return default_value;
+    }
+    std::wstring wide;
+    return Utf8ToWide(value_.asString(), &wide) ? wide : default_value;
+  }
+
+  const JsonArray& as_array() const {
+    EnsureArrayCache();
+    return array_cache_;
+  }
+
+  const JsonObject& as_object() const {
+    EnsureObjectCache();
+    return object_cache_;
+  }
 
   bool has_key(const std::wstring& key) const {
-    if (!is_object()) return false;
-    for (const auto& pair : obj_val_) {
-      if (pair.first == key) return true;
+    if (!value_.isObject()) {
+      return false;
     }
-    return false;
+    std::string utf8_key;
+    return WideToUtf8(key, &utf8_key) && value_.isMember(utf8_key);
   }
 
   const JsonValue& operator[](const std::wstring& key) const {
-    static const JsonValue null_val;
-    if (!is_object()) return null_val;
-    for (const auto& pair : obj_val_) {
-      if (pair.first == key) return pair.second;
+    static const JsonValue null_value;
+    if (!value_.isObject()) {
+      return null_value;
     }
-    return null_val;
+
+    EnsureObjectCache();
+    auto found = object_index_.find(key);
+    return found != object_index_.end()
+               ? object_cache_[found->second].second
+               : null_value;
   }
 
   std::wstring Serialize(int indent = 0) const {
-    std::wostringstream oss;
-    Write(oss, indent, 0);
-    return oss.str();
+    Json::StreamWriterBuilder builder;
+    builder["commentStyle"] = "None";
+    builder["indentation"] = std::string(
+        static_cast<size_t>(std::clamp(indent, 0, 16)), ' ');
+    builder["enableYAMLCompatibility"] = false;
+    builder["dropNullPlaceholders"] = false;
+    builder["useSpecialFloats"] = false;
+    builder["emitUTF8"] = true;
+    builder["precision"] = 17;
+    builder["precisionType"] = "significant";
+
+    try {
+      std::string utf8 = Json::writeString(builder, value_);
+      std::wstring wide;
+      return Utf8ToWide(utf8, &wide) ? wide : L"";
+    } catch (const std::exception&) {
+      return L"";
+    }
   }
 
-  static JsonValue Parse(const std::wstring& json_str) {
-    size_t pos = 0;
-    SkipWhitespace(json_str, pos);
-    return ParseValue(json_str, pos);
-  }
+  static bool TryParse(const std::wstring& json_text, JsonValue* result,
+                       std::wstring* error = nullptr) {
+    if (result == nullptr) {
+      return false;
+    }
 
- private:
-  void Write(std::wostringstream& oss, int indent_step, int current_indent) const {
-    std::wstring ind(current_indent, L' ');
-    std::wstring next_ind(current_indent + indent_step, L' ');
+    std::string utf8;
+    if (!WideToUtf8(json_text, &utf8)) {
+      if (error != nullptr) {
+        *error = L"JSON contains invalid Unicode.";
+      }
+      return false;
+    }
+    if (utf8.size() > kMaximumInputBytes) {
+      if (error != nullptr) {
+        *error = L"JSON input exceeds the size limit.";
+      }
+      return false;
+    }
+    if (!HasValidNumberTokens(utf8)) {
+      if (error != nullptr) {
+        *error = L"JSON contains an invalid number.";
+      }
+      return false;
+    }
 
-    switch (type_) {
-      case JsonType::kNull:
-        oss << L"null";
-        break;
-      case JsonType::kBoolean:
-        oss << (bool_val_ ? L"true" : L"false");
-        break;
-      case JsonType::kNumber: {
-        if (std::floor(num_val_) == num_val_ && std::abs(num_val_) < 1e14) {
-          oss << static_cast<int64_t>(num_val_);
-        } else {
-          wchar_t buf[64];
-          swprintf_s(buf, L"%.4f", num_val_);
-          // Remove trailing zeros
-          wchar_t* end = buf + wcslen(buf) - 1;
-          while (end > buf && *end == L'0') { *end = L'\0'; --end; }
-          if (end > buf && *end == L'.') { *end = L'\0'; }
-          oss << buf;
+    Json::CharReaderBuilder builder;
+    Json::CharReaderBuilder::ecma404Mode(&builder.settings_);
+    builder["collectComments"] = false;
+    builder["rejectDupKeys"] = true;
+    builder["skipBom"] = true;
+    builder["stackLimit"] = kMaximumNestingDepth;
+
+    Json::Value parsed;
+    std::string parse_error;
+    try {
+      std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+      if (!reader ||
+          !reader->parse(utf8.data(), utf8.data() + utf8.size(),
+                         &parsed, &parse_error)) {
+        if (error != nullptr) {
+          std::wstring wide_error;
+          *error = Utf8ToWide(parse_error, &wide_error)
+                       ? wide_error
+                       : L"Invalid JSON input.";
         }
-        break;
+        return false;
       }
-      case JsonType::kString:
-        oss << L"\"" << EscapeString(str_val_) << L"\"";
-        break;
-      case JsonType::kArray: {
-        if (arr_val_.empty()) {
-          oss << L"[]";
-        } else {
-          oss << L"[\n";
-          for (size_t i = 0; i < arr_val_.size(); ++i) {
-            oss << next_ind;
-            arr_val_[i].Write(oss, indent_step, current_indent + indent_step);
-            if (i + 1 < arr_val_.size()) oss << L",";
-            oss << L"\n";
-          }
-          oss << ind << L"]";
-        }
-        break;
+    } catch (const std::exception& exception) {
+      if (error != nullptr) {
+        std::wstring wide_error;
+        *error = Utf8ToWide(exception.what(), &wide_error)
+                     ? wide_error
+                     : L"Invalid JSON input.";
       }
-      case JsonType::kObject: {
-        if (obj_val_.empty()) {
-          oss << L"{}";
-        } else {
-          oss << L"{\n";
-          for (size_t i = 0; i < obj_val_.size(); ++i) {
-            oss << next_ind << L"\"" << EscapeString(obj_val_[i].first) << L"\": ";
-            obj_val_[i].second.Write(oss, indent_step, current_indent + indent_step);
-            if (i + 1 < obj_val_.size()) oss << L",";
-            oss << L"\n";
-          }
-          oss << ind << L"}";
-        }
-        break;
-      }
+      return false;
     }
+
+    *result = JsonValue(std::move(parsed));
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
   }
 
-  static std::wstring EscapeString(const std::wstring& s) {
-    std::wostringstream oss;
-    for (wchar_t c : s) {
-      if (c == L'"') oss << L"\\\"";
-      else if (c == L'\\') oss << L"\\\\";
-      else if (c == L'\b') oss << L"\\b";
-      else if (c == L'\f') oss << L"\\f";
-      else if (c == L'\n') oss << L"\\n";
-      else if (c == L'\r') oss << L"\\r";
-      else if (c == L'\t') oss << L"\\t";
-      else oss << c;
-    }
-    return oss.str();
-  }
-
-  static void SkipWhitespace(const std::wstring& s, size_t& pos) {
-    while (pos < s.length() && (s[pos] == L' ' || s[pos] == L'\t' || s[pos] == L'\n' || s[pos] == L'\r')) {
-      ++pos;
-    }
-  }
-
-  static JsonValue ParseValue(const std::wstring& s, size_t& pos) {
-    SkipWhitespace(s, pos);
-    if (pos >= s.length()) return JsonValue();
-
-    wchar_t c = s[pos];
-    if (c == L'{') return ParseObject(s, pos);
-    if (c == L'[') return ParseArray(s, pos);
-    if (c == L'"') return ParseString(s, pos);
-    if (c == L't' || c == L'f') return ParseBool(s, pos);
-    if (c == L'n') return ParseNull(s, pos);
-    if (c == L'-' || (c >= L'0' && c <= L'9')) return ParseNumber(s, pos);
-
-    return JsonValue();
-  }
-
-  static JsonValue ParseObject(const std::wstring& s, size_t& pos) {
-    JsonObject obj;
-    ++pos; // skip '{'
-    SkipWhitespace(s, pos);
-
-    if (pos < s.length() && s[pos] == L'}') {
-      ++pos;
-      return JsonValue(obj);
-    }
-
-    while (pos < s.length()) {
-      SkipWhitespace(s, pos);
-      if (pos >= s.length() || s[pos] != L'"') break;
-      std::wstring key = ParseStringVal(s, pos);
-      SkipWhitespace(s, pos);
-      if (pos >= s.length() || s[pos] != L':') break;
-      ++pos; // skip ':'
-      JsonValue val = ParseValue(s, pos);
-      obj.push_back({key, std::move(val)});
-
-      SkipWhitespace(s, pos);
-      if (pos < s.length() && s[pos] == L',') {
-        ++pos;
-      } else if (pos < s.length() && s[pos] == L'}') {
-        ++pos;
-        break;
-      } else {
-        break;
-      }
-    }
-    return JsonValue(obj);
-  }
-
-  static JsonValue ParseArray(const std::wstring& s, size_t& pos) {
-    JsonArray arr;
-    ++pos; // skip '['
-    SkipWhitespace(s, pos);
-
-    if (pos < s.length() && s[pos] == L']') {
-      ++pos;
-      return JsonValue(arr);
-    }
-
-    while (pos < s.length()) {
-      JsonValue val = ParseValue(s, pos);
-      arr.push_back(std::move(val));
-
-      SkipWhitespace(s, pos);
-      if (pos < s.length() && s[pos] == L',') {
-        ++pos;
-      } else if (pos < s.length() && s[pos] == L']') {
-        ++pos;
-        break;
-      } else {
-        break;
-      }
-    }
-    return JsonValue(arr);
-  }
-
-  static std::wstring ParseStringVal(const std::wstring& s, size_t& pos) {
-    std::wstring result;
-    ++pos; // skip '"'
-    while (pos < s.length()) {
-      wchar_t c = s[pos++];
-      if (c == L'"') break;
-      if (c == L'\\' && pos < s.length()) {
-        wchar_t esc = s[pos++];
-        if (esc == L'"') result += L'"';
-        else if (esc == L'\\') result += L'\\';
-        else if (esc == L'/') result += L'/';
-        else if (esc == L'b') result += L'\b';
-        else if (esc == L'f') result += L'\f';
-        else if (esc == L'n') result += L'\n';
-        else if (esc == L'r') result += L'\r';
-        else if (esc == L't') result += L'\t';
-        else result += esc;
-      } else {
-        result += c;
-      }
-    }
+  static JsonValue Parse(const std::wstring& json_text) {
+    JsonValue result;
+    TryParse(json_text, &result);
     return result;
   }
 
-  static JsonValue ParseString(const std::wstring& s, size_t& pos) {
-    return JsonValue(ParseStringVal(s, pos));
+ private:
+  static constexpr size_t kMaximumInputBytes = 4 * 1024 * 1024;
+  static constexpr int kMaximumNestingDepth = 128;
+
+  explicit JsonValue(Json::Value value) : value_(std::move(value)) {}
+
+  static bool HasValidNumberTokens(std::string_view json) {
+    size_t position = 0;
+    while (position < json.size()) {
+      if (json[position] == '"') {
+        ++position;
+        while (position < json.size()) {
+          if (json[position] == '\\') {
+            position += std::min<size_t>(2, json.size() - position);
+          } else if (json[position] == '"') {
+            ++position;
+            break;
+          } else {
+            ++position;
+          }
+        }
+        continue;
+      }
+
+      if (json[position] != '-' &&
+          (json[position] < '0' || json[position] > '9')) {
+        ++position;
+        continue;
+      }
+
+      if (json[position] == '-') {
+        ++position;
+        if (position >= json.size() || json[position] < '0' ||
+            json[position] > '9') {
+          return false;
+        }
+      }
+
+      if (json[position] == '0') {
+        ++position;
+        if (position < json.size() && json[position] >= '0' &&
+            json[position] <= '9') {
+          return false;
+        }
+      } else {
+        if (json[position] < '1' || json[position] > '9') {
+          return false;
+        }
+        while (position < json.size() && json[position] >= '0' &&
+               json[position] <= '9') {
+          ++position;
+        }
+      }
+
+      if (position < json.size() && json[position] == '.') {
+        ++position;
+        if (position >= json.size() || json[position] < '0' ||
+            json[position] > '9') {
+          return false;
+        }
+        while (position < json.size() && json[position] >= '0' &&
+               json[position] <= '9') {
+          ++position;
+        }
+      }
+
+      if (position < json.size() &&
+          (json[position] == 'e' || json[position] == 'E')) {
+        ++position;
+        if (position < json.size() &&
+            (json[position] == '+' || json[position] == '-')) {
+          ++position;
+        }
+        if (position >= json.size() || json[position] < '0' ||
+            json[position] > '9') {
+          return false;
+        }
+        while (position < json.size() && json[position] >= '0' &&
+               json[position] <= '9') {
+          ++position;
+        }
+      }
+
+      if (position < json.size() && json[position] != ' ' &&
+          json[position] != '\t' && json[position] != '\r' &&
+          json[position] != '\n' && json[position] != ',' &&
+          json[position] != ']' && json[position] != '}') {
+        return false;
+      }
+    }
+    return true;
   }
 
-  static JsonValue ParseBool(const std::wstring& s, size_t& pos) {
-    if (s.compare(pos, 4, L"true") == 0) {
-      pos += 4;
-      return JsonValue(true);
+  static bool WideToUtf8(const std::wstring& wide, std::string* utf8) {
+    if (utf8 == nullptr) {
+      return false;
     }
-    if (s.compare(pos, 5, L"false") == 0) {
-      pos += 5;
-      return JsonValue(false);
+    if (wide.empty()) {
+      utf8->clear();
+      return true;
     }
-    return JsonValue();
+    if (wide.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+      return false;
+    }
+
+    int length = WideCharToMultiByte(
+        CP_UTF8, WC_ERR_INVALID_CHARS, wide.data(),
+        static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
+    if (length <= 0) {
+      return false;
+    }
+
+    utf8->assign(static_cast<size_t>(length), '\0');
+    return WideCharToMultiByte(
+               CP_UTF8, WC_ERR_INVALID_CHARS, wide.data(),
+               static_cast<int>(wide.size()), utf8->data(), length,
+               nullptr, nullptr) == length;
   }
 
-  static JsonValue ParseNull(const std::wstring& s, size_t& pos) {
-    if (s.compare(pos, 4, L"null") == 0) {
-      pos += 4;
+  static bool Utf8ToWide(const std::string& utf8, std::wstring* wide) {
+    if (wide == nullptr) {
+      return false;
     }
-    return JsonValue();
+    if (utf8.empty()) {
+      wide->clear();
+      return true;
+    }
+    if (utf8.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+      return false;
+    }
+
+    int length = MultiByteToWideChar(
+        CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(),
+        static_cast<int>(utf8.size()), nullptr, 0);
+    if (length <= 0) {
+      return false;
+    }
+
+    wide->assign(static_cast<size_t>(length), L'\0');
+    return MultiByteToWideChar(
+               CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(),
+               static_cast<int>(utf8.size()), wide->data(), length) == length;
   }
 
-  static JsonValue ParseNumber(const std::wstring& s, size_t& pos) {
-    size_t start = pos;
-    if (pos < s.length() && s[pos] == L'-') ++pos;
-    while (pos < s.length() && ((s[pos] >= L'0' && s[pos] <= L'9') || s[pos] == L'.' || s[pos] == L'e' || s[pos] == L'E' || s[pos] == L'+' || s[pos] == L'-')) {
-      ++pos;
+  void EnsureArrayCache() const {
+    if (array_cache_initialized_) {
+      return;
     }
-    std::wstring num_str = s.substr(start, pos - start);
-    double val = _wtof(num_str.c_str());
-    return JsonValue(val);
+    array_cache_initialized_ = true;
+    if (!value_.isArray()) {
+      return;
+    }
+    array_cache_.reserve(value_.size());
+    for (const auto& child : value_) {
+      array_cache_.push_back(JsonValue(child));
+    }
   }
 
-  JsonType type_{JsonType::kNull};
-  bool bool_val_{false};
-  double num_val_{0.0};
-  std::wstring str_val_;
-  JsonArray arr_val_;
-  JsonObject obj_val_;
+  void EnsureObjectCache() const {
+    if (object_cache_initialized_) {
+      return;
+    }
+    object_cache_initialized_ = true;
+    if (!value_.isObject()) {
+      return;
+    }
+
+    for (const auto& name : value_.getMemberNames()) {
+      std::wstring wide_name;
+      if (!Utf8ToWide(name, &wide_name)) {
+        continue;
+      }
+      size_t index = object_cache_.size();
+      object_cache_.push_back({wide_name, JsonValue(value_[name])});
+      object_index_.emplace(std::move(wide_name), index);
+    }
+  }
+
+  Json::Value value_;
+  mutable bool array_cache_initialized_{false};
+  mutable JsonArray array_cache_;
+  mutable bool object_cache_initialized_{false};
+  mutable JsonObject object_cache_;
+  mutable std::map<std::wstring, size_t> object_index_;
 };
 
 }  // namespace lite_proc_manager
