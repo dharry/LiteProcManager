@@ -86,11 +86,12 @@ class ProcessSnapshotService {
     std::wstring description;
     std::wstring user_name{L"-"};
     std::wstring architecture{L"x64"};
-    std::wstring platform{L"64ビット"};
-    std::wstring os_context{L"64ビット"};
-    std::wstring elevated{L"いいえ"};
-    std::wstring uac_virtualization{L"該当なし"};
-    std::wstring dep_status{L"有効"};
+    ProcessBitness platform{ProcessBitness::k64Bit};
+    ProcessBitness os_context{ProcessBitness::k64Bit};
+    bool elevated{false};
+    ProcessPolicyStatus uac_virtualization{
+        ProcessPolicyStatus::kNotApplicable};
+    ProcessPolicyStatus dep_status{ProcessPolicyStatus::kEnabled};
     std::wstring enterprise_context{L"-"};
     std::wstring dpi_awareness{L"Per-Monitor"};
     std::wstring package_name{L"-"};

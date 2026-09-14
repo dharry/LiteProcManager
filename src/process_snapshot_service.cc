@@ -11,8 +11,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "language_manager.h"
-
 #pragma comment(lib, "ntdll.lib")
 #pragma comment(lib, "version.lib")
 #pragma comment(lib, "advapi32.lib")
@@ -215,13 +213,13 @@ SnapshotResult ProcessSnapshotService::GetSnapshot(const ProcessSnapshotOptions&
 
     if (pid == 0) {
       item->name = L"System Idle Process";
-      item->status = LanguageManager::GetString(StringId::kStatusRunning);
+      item->status = ProcessExecutionStatus::kRunning;
     } else if (entry->ImageName.Length > 0 && entry->ImageName.Buffer != nullptr) {
       item->name = std::wstring(entry->ImageName.Buffer, entry->ImageName.Length / sizeof(wchar_t));
-      item->status = LanguageManager::GetString(StringId::kStatusRunning);
+      item->status = ProcessExecutionStatus::kRunning;
     } else {
       item->name = L"System";
-      item->status = LanguageManager::GetString(StringId::kStatusRunning);
+      item->status = ProcessExecutionStatus::kRunning;
     }
 
     item->thread_count = entry->NumberOfThreads;
@@ -331,11 +329,11 @@ void ProcessSnapshotService::EnrichProcessDetails(
   if (item->process_id == 0 || item->process_id == 4) {
     item->user_name = L"NT AUTHORITY\\SYSTEM";
     item->architecture = L"x64";
-    item->platform = LanguageManager::GetString(StringId::kPlatform64Bit);
-    item->os_context = LanguageManager::GetString(StringId::kPlatform64Bit);
-    item->elevated = LanguageManager::GetString(StringId::kYes);
-    item->uac_virtualization = LanguageManager::GetString(StringId::kNotApplicable);
-    item->dep_status = LanguageManager::GetString(StringId::kEnabledPermanent);
+    item->platform = ProcessBitness::k64Bit;
+    item->os_context = ProcessBitness::k64Bit;
+    item->elevated = true;
+    item->uac_virtualization = ProcessPolicyStatus::kNotApplicable;
+    item->dep_status = ProcessPolicyStatus::kEnabledPermanent;
     item->description = item->process_id == 0 ? L"System Idle Process" : L"NT Kernel & System";
     return;
   }
@@ -415,10 +413,9 @@ void ProcessSnapshotService::EnrichProcessDetails(
     BOOL is_wow64 = FALSE;
     if (IsWow64Process(process_handle, &is_wow64)) {
       new_cache.architecture = is_wow64 ? L"x86" : L"x64";
-      new_cache.platform = is_wow64 ? LanguageManager::GetString(StringId::kPlatform32Bit)
-                                    : LanguageManager::GetString(StringId::kPlatform64Bit);
-      new_cache.os_context = is_wow64 ? LanguageManager::GetString(StringId::kPlatform32Bit)
-                                      : LanguageManager::GetString(StringId::kPlatform64Bit);
+      new_cache.platform = is_wow64 ? ProcessBitness::k32Bit
+                                    : ProcessBitness::k64Bit;
+      new_cache.os_context = new_cache.platform;
     }
 
     // 4. GUI Objects (User & GDI)
@@ -464,10 +461,11 @@ void ProcessSnapshotService::EnrichProcessDetails(
     BOOL dep_perm = FALSE;
     if (GetProcessDEPPolicy(process_handle, &dep_flags, &dep_perm)) {
       if (dep_flags & PROCESS_DEP_ENABLE) {
-        new_cache.dep_status = dep_perm ? LanguageManager::GetString(StringId::kEnabledPermanent)
-                                        : LanguageManager::GetString(StringId::kEnabled);
+        new_cache.dep_status = dep_perm
+                                   ? ProcessPolicyStatus::kEnabledPermanent
+                                   : ProcessPolicyStatus::kEnabled;
       } else {
-        new_cache.dep_status = LanguageManager::GetString(StringId::kDisabled);
+        new_cache.dep_status = ProcessPolicyStatus::kDisabled;
       }
     }
 
@@ -490,17 +488,17 @@ void ProcessSnapshotService::EnrichProcessDetails(
       TOKEN_ELEVATION elevation = {0};
       DWORD ret_len = 0;
       if (GetTokenInformation(token_handle, TokenElevation, &elevation, sizeof(elevation), &ret_len)) {
-        new_cache.elevated = elevation.TokenIsElevated ? LanguageManager::GetString(StringId::kYes)
-                                                       : LanguageManager::GetString(StringId::kNo);
+        new_cache.elevated = elevation.TokenIsElevated != 0;
       }
 
       // UAC Virtualization
       DWORD virt_enabled = 0;
       if (GetTokenInformation(token_handle, TokenVirtualizationEnabled, &virt_enabled, sizeof(virt_enabled), &ret_len)) {
-        new_cache.uac_virtualization = virt_enabled ? LanguageManager::GetString(StringId::kEnabled)
-                                                    : LanguageManager::GetString(StringId::kDisabled);
+        new_cache.uac_virtualization =
+            virt_enabled ? ProcessPolicyStatus::kEnabled
+                         : ProcessPolicyStatus::kDisabled;
       } else {
-        new_cache.uac_virtualization = LanguageManager::GetString(StringId::kNotApplicable);
+        new_cache.uac_virtualization = ProcessPolicyStatus::kNotApplicable;
       }
 
       // User Name

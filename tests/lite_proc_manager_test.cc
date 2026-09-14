@@ -221,7 +221,50 @@ TEST_CLASS(ProcessItemTests) {
                      BuildProcessTsv(processes, columns));
   }
 
+  TEST_METHOD(ProcessStateValues_ShouldFollowCurrentLanguageWithoutMutation) {
+    ProcessItem item;
+    item.platform = ProcessBitness::k32Bit;
+    item.os_context = ProcessBitness::k64Bit;
+    item.status = ProcessExecutionStatus::kSuspended;
+    item.elevated = true;
+    item.uac_virtualization = ProcessPolicyStatus::kNotApplicable;
+    item.dep_status = ProcessPolicyStatus::kEnabledPermanent;
+
+    LanguageManager::SetLanguage(AppLanguage::kJapanese);
+    Assert::AreEqual(std::wstring(L"32ビット"),
+                     item.GetColumnValue(ProcessColumnId::kPlatform));
+    Assert::AreEqual(std::wstring(L"一時停止"),
+                     item.GetColumnValue(ProcessColumnId::kStatus));
+    Assert::AreEqual(std::wstring(L"64ビット"),
+                     item.GetColumnValue(ProcessColumnId::kOsContext));
+    Assert::AreEqual(std::wstring(L"はい"),
+                     item.GetColumnValue(ProcessColumnId::kElevated));
+    Assert::AreEqual(
+        std::wstring(L"該当なし"),
+        item.GetColumnValue(ProcessColumnId::kUacVirtualization));
+    Assert::AreEqual(std::wstring(L"有効 (永続的)"),
+                     item.GetColumnValue(ProcessColumnId::kDepStatus));
+
+    LanguageManager::SetLanguage(AppLanguage::kEnglish);
+    Assert::AreEqual(std::wstring(L"32-bit"),
+                     item.GetColumnValue(ProcessColumnId::kPlatform));
+    Assert::AreEqual(std::wstring(L"Suspended"),
+                     item.GetColumnValue(ProcessColumnId::kStatus));
+    Assert::AreEqual(std::wstring(L"64-bit"),
+                     item.GetColumnValue(ProcessColumnId::kOsContext));
+    Assert::AreEqual(std::wstring(L"Yes"),
+                     item.GetColumnValue(ProcessColumnId::kElevated));
+    Assert::AreEqual(
+        std::wstring(L"N/A"),
+        item.GetColumnValue(ProcessColumnId::kUacVirtualization));
+    Assert::AreEqual(std::wstring(L"Enabled (Permanent)"),
+                     item.GetColumnValue(ProcessColumnId::kDepStatus));
+
+    LanguageManager::SetLanguage(AppLanguage::kJapanese);
+  }
+
   TEST_METHOD(Formatting_ShouldReturnValidStrings) {
+    LanguageManager::SetLanguage(AppLanguage::kJapanese);
     ProcessItem item;
     item.process_id = 1234;
     item.name = L"test.exe";
@@ -241,8 +284,8 @@ TEST_CLASS(ProcessItemTests) {
     item.io_read_bytes = 1024ULL * 1024 * 10;       // 10MB
     item.priority = ProcessPriorityClass::kHigh;
     item.architecture = L"x64";
-    item.elevated = L"はい";
-    item.dep_status = L"有効 (永続的)";
+    item.elevated = true;
+    item.dep_status = ProcessPolicyStatus::kEnabledPermanent;
 
     Assert::AreEqual(std::wstring(L"12.3 %"), item.GetFormattedCpu());
     Assert::AreEqual(std::wstring(L"51,200 K"), item.GetFormattedWorkingSet());

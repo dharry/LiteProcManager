@@ -15,6 +15,23 @@
 
 namespace lite_proc_manager {
 
+enum class ProcessBitness {
+  k32Bit,
+  k64Bit,
+};
+
+enum class ProcessExecutionStatus {
+  kRunning,
+  kSuspended,
+};
+
+enum class ProcessPolicyStatus {
+  kDisabled,
+  kEnabled,
+  kEnabledPermanent,
+  kNotApplicable,
+};
+
 class ProcessItem {
  public:
   ProcessItem();
@@ -24,7 +41,7 @@ class ProcessItem {
   uint32_t process_id{0};
   uint32_t parent_process_id{0};
   std::wstring name;
-  std::wstring status{L"実行中"};
+  ProcessExecutionStatus status{ProcessExecutionStatus::kRunning};
   std::wstring user_name{L"-"};
   double cpu_percent{0.0};
 
@@ -56,12 +73,13 @@ class ProcessItem {
   // Path & Execution Context
   std::wstring file_path;
   std::wstring command_line;
-  std::wstring os_context{L"64ビット"};
-  std::wstring platform{L"64ビット"};
-  std::wstring elevated{L"いいえ"};
-  std::wstring uac_virtualization{L"該当なし"};
+  ProcessBitness os_context{ProcessBitness::k64Bit};
+  ProcessBitness platform{ProcessBitness::k64Bit};
+  bool elevated{false};
+  ProcessPolicyStatus uac_virtualization{
+      ProcessPolicyStatus::kNotApplicable};
   std::wstring description;
-  std::wstring dep_status{L"有効"};
+  ProcessPolicyStatus dep_status{ProcessPolicyStatus::kEnabled};
   std::wstring enterprise_context{L"-"};
   std::wstring dpi_awareness{L"Per-Monitor"};
   std::wstring package_name{L"-"};

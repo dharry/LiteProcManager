@@ -1227,7 +1227,7 @@ void MainWindow::SortItems() {
       case ProcessColumnId::kPid:
         return a->process_id < b->process_id;
       case ProcessColumnId::kStatus:
-        return _wcsicmp(a->status.c_str(), b->status.c_str()) < 0;
+        return a->status < b->status;
       case ProcessColumnId::kUserName:
         return _wcsicmp(a->user_name.c_str(), b->user_name.c_str()) < 0;
       case ProcessColumnId::kCpu:
@@ -1273,17 +1273,17 @@ void MainWindow::SortItems() {
       case ProcessColumnId::kCommandLine:
         return _wcsicmp(a->command_line.c_str(), b->command_line.c_str()) < 0;
       case ProcessColumnId::kOsContext:
-        return _wcsicmp(a->os_context.c_str(), b->os_context.c_str()) < 0;
+        return a->os_context < b->os_context;
       case ProcessColumnId::kPlatform:
-        return _wcsicmp(a->platform.c_str(), b->platform.c_str()) < 0;
+        return a->platform < b->platform;
       case ProcessColumnId::kElevated:
-        return _wcsicmp(a->elevated.c_str(), b->elevated.c_str()) < 0;
+        return a->elevated < b->elevated;
       case ProcessColumnId::kUacVirtualization:
-        return _wcsicmp(a->uac_virtualization.c_str(), b->uac_virtualization.c_str()) < 0;
+        return a->uac_virtualization < b->uac_virtualization;
       case ProcessColumnId::kDescription:
         return _wcsicmp(a->description.c_str(), b->description.c_str()) < 0;
       case ProcessColumnId::kDepStatus:
-        return _wcsicmp(a->dep_status.c_str(), b->dep_status.c_str()) < 0;
+        return a->dep_status < b->dep_status;
       case ProcessColumnId::kEnterpriseContext:
         return _wcsicmp(a->enterprise_context.c_str(), b->enterprise_context.c_str()) < 0;
       case ProcessColumnId::kDpiAwareness:
@@ -1735,7 +1735,8 @@ void MainWindow::ShowSelectedProcessProperties() {
       << LanguageManager::GetString(StringId::kPropImageName) << proc->name << L"\n"
       << LanguageManager::GetString(StringId::kPropPid) << proc->process_id
       << LanguageManager::GetString(StringId::kPropParentPid) << proc->parent_process_id << L")\n"
-      << LanguageManager::GetString(StringId::kPropStatus) << proc->status << L"\n"
+      << LanguageManager::GetString(StringId::kPropStatus)
+      << proc->GetColumnValue(ProcessColumnId::kStatus) << L"\n"
       << LanguageManager::GetString(StringId::kPropUser) << proc->user_name << L"\n"
       << LanguageManager::GetString(StringId::kPropDescription) << proc->description << L"\n"
       << LanguageManager::GetString(StringId::kPropArchitecture) << proc->architecture << L"\n"

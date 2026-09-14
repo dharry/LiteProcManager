@@ -10,6 +10,31 @@
 
 namespace lite_proc_manager {
 
+namespace {
+
+std::wstring FormatBitness(ProcessBitness bitness) {
+  return LanguageManager::GetString(
+      bitness == ProcessBitness::k32Bit ? StringId::kPlatform32Bit
+                                        : StringId::kPlatform64Bit);
+}
+
+std::wstring FormatPolicyStatus(ProcessPolicyStatus status) {
+  switch (status) {
+    case ProcessPolicyStatus::kDisabled:
+      return LanguageManager::GetString(StringId::kDisabled);
+    case ProcessPolicyStatus::kEnabled:
+      return LanguageManager::GetString(StringId::kEnabled);
+    case ProcessPolicyStatus::kEnabledPermanent:
+      return LanguageManager::GetString(StringId::kEnabledPermanent);
+    case ProcessPolicyStatus::kNotApplicable:
+      return LanguageManager::GetString(StringId::kNotApplicable);
+    default:
+      return L"";
+  }
+}
+
+}  // namespace
+
 ProcessItem::ProcessItem() = default;
 
 std::wstring ProcessItem::GetFormattedCpu() const {
@@ -156,7 +181,10 @@ std::wstring ProcessItem::GetColumnValue(ProcessColumnId column_id) const {
     case ProcessColumnId::kPid:
       return std::to_wstring(process_id);
     case ProcessColumnId::kStatus:
-      return status;
+      return LanguageManager::GetString(
+          status == ProcessExecutionStatus::kSuspended
+              ? StringId::kStatusSuspended
+              : StringId::kStatusRunning);
     case ProcessColumnId::kUserName:
       return user_name;
     case ProcessColumnId::kCpu:
@@ -202,17 +230,18 @@ std::wstring ProcessItem::GetColumnValue(ProcessColumnId column_id) const {
     case ProcessColumnId::kCommandLine:
       return command_line;
     case ProcessColumnId::kOsContext:
-      return os_context;
+      return FormatBitness(os_context);
     case ProcessColumnId::kPlatform:
-      return platform;
+      return FormatBitness(platform);
     case ProcessColumnId::kElevated:
-      return elevated;
+      return LanguageManager::GetString(elevated ? StringId::kYes
+                                                  : StringId::kNo);
     case ProcessColumnId::kUacVirtualization:
-      return uac_virtualization;
+      return FormatPolicyStatus(uac_virtualization);
     case ProcessColumnId::kDescription:
       return description;
     case ProcessColumnId::kDepStatus:
-      return dep_status;
+      return FormatPolicyStatus(dep_status);
     case ProcessColumnId::kEnterpriseContext:
       return enterprise_context;
     case ProcessColumnId::kDpiAwareness:
