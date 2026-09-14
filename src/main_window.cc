@@ -38,6 +38,8 @@ void RestoreSingleInstanceLock(HANDLE mutex);
 namespace lite_proc_manager {
 
 namespace {
+constexpr UINT kSearchDebounceMilliseconds = 150;
+
 struct ServiceSnapshotMessage {
   uint64_t generation{0};
   std::vector<std::shared_ptr<ServiceItem>> services;
@@ -652,7 +654,7 @@ void MainWindow::InitializeComponents() {
   // 2. ListView
   listview_hwnd_ = CreateWindowExW(
       WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"",
-      WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS | WS_CLIPSIBLINGS,
+      WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | WS_CLIPSIBLINGS,
       0, 42, settings_.window_width, settings_.window_height - 42 - 24,
       hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_LISTVIEW)), instance_, nullptr);
 
@@ -831,9 +833,12 @@ void MainWindow::RebuildListViewColumns() {
     ListView_DeleteColumn(listview_hwnd_, i);
   }
 
+  visible_process_columns_.clear();
   int col_index = 0;
   for (const auto& col : settings_.columns) {
     if (!col.visible) continue;
+
+    visible_process_columns_.push_back(col.id);
 
     LVCOLUMNW lvc = {0};
     lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT | LVCF_SUBITEM;
@@ -1061,6 +1066,13 @@ void MainWindow::UpdateStatusLabels() {
 }
 
 void MainWindow::ApplyFilterAndDisplay() {
+  if (list_view_data_current_) {
+    saved_list_view_state_ = CaptureListViewState();
+  }
+  if (tree_view_data_current_) {
+    saved_tree_view_state_ = CaptureTreeViewState();
+  }
+
   wchar_t filter_buf[256] = {0};
   GetWindowTextW(search_edit_, filter_buf, static_cast<int>(std::size(filter_buf)));
   std::wstring query = filter_buf;
@@ -1085,9 +1097,13 @@ void MainWindow::ApplyFilterAndDisplay() {
   }
 
   if (settings_.display_mode == ViewDisplayMode::kProcessTree) {
-    UpdateTreeView();
+    UpdateTreeView(saved_tree_view_state_ ? &saved_tree_view_state_.value() : nullptr);
+    tree_view_data_current_ = true;
+    list_view_data_current_ = false;
   } else {
-    UpdateListView();
+    UpdateListView(saved_list_view_state_ ? &saved_list_view_state_.value() : nullptr);
+    list_view_data_current_ = true;
+    tree_view_data_current_ = false;
   }
 }
 
@@ -1204,66 +1220,225 @@ void MainWindow::SortItems() {
   }
 }
 
-void MainWindow::UpdateListView() {
-  SortItems();
-
-  uint32_t selected_pid = 0;
-  auto sel_proc = GetSelectedProcess();
-  if (sel_proc) selected_pid = sel_proc->process_id;
-
-  SendMessageW(listview_hwnd_, WM_SETREDRAW, FALSE, 0);
-  ListView_DeleteAllItems(listview_hwnd_);
-
-  std::vector<ProcessColumnInfo> visible_cols;
-  for (const auto& col : settings_.columns) {
-    if (col.visible) visible_cols.push_back(col);
+std::optional<MainWindow::ProcessIdentity> MainWindow::GetProcessIdentity(
+    const ProcessItem& process) {
+  if (!process.start_time.has_value()) {
+    return std::nullopt;
   }
 
-  for (size_t i = 0; i < filtered_processes_.size(); ++i) {
-    const auto& proc = filtered_processes_[i];
-    int icon_idx = icon_helper_.GetIconIndex(proc->file_path);
+  ULARGE_INTEGER creation_time{};
+  creation_time.LowPart = process.start_time->dwLowDateTime;
+  creation_time.HighPart = process.start_time->dwHighDateTime;
+  return ProcessIdentity{process.process_id, creation_time.QuadPart};
+}
 
-    LVITEMW item = {0};
-    item.mask = LVIF_TEXT | LVIF_IMAGE | LVIF_PARAM;
-    item.iItem = static_cast<int>(i);
-    item.iSubItem = 0;
-    item.iImage = icon_idx;
-    item.lParam = reinterpret_cast<LPARAM>(proc.get());
+bool MainWindow::IsSameProcessIdentity(const ProcessIdentity& lhs,
+                                       const ProcessIdentity& rhs) {
+  return lhs.process_id == rhs.process_id &&
+         lhs.creation_time == rhs.creation_time;
+}
 
-    std::wstring col0_val = proc->GetColumnValue(visible_cols[0].id);
-    item.pszText = const_cast<wchar_t*>(col0_val.c_str());
+MainWindow::ProcessListViewState MainWindow::CaptureListViewState() const {
+  ProcessListViewState state;
 
-    ListView_InsertItem(listview_hwnd_, &item);
+  int selected_index = -1;
+  while ((selected_index = ListView_GetNextItem(
+              listview_hwnd_, selected_index, LVNI_SELECTED)) != -1) {
+    if (selected_index >= static_cast<int>(filtered_processes_.size())) {
+      continue;
+    }
+    auto identity = GetProcessIdentity(*filtered_processes_[selected_index]);
+    if (identity.has_value()) {
+      state.selected_items.push_back(identity.value());
+    }
+  }
 
-    for (size_t c = 1; c < visible_cols.size(); ++c) {
-      std::wstring sub_val = proc->GetColumnValue(visible_cols[c].id);
-      ListView_SetItemText(listview_hwnd_, static_cast<int>(i), static_cast<int>(c),
-                           const_cast<wchar_t*>(sub_val.c_str()));
+  int focused_index = ListView_GetNextItem(listview_hwnd_, -1, LVNI_FOCUSED);
+  if (focused_index >= 0 &&
+      focused_index < static_cast<int>(filtered_processes_.size())) {
+    state.focused_item = GetProcessIdentity(*filtered_processes_[focused_index]);
+  }
+
+  int top_index = ListView_GetTopIndex(listview_hwnd_);
+  if (top_index >= 0 && top_index < static_cast<int>(filtered_processes_.size())) {
+    state.top_item = GetProcessIdentity(*filtered_processes_[top_index]);
+  }
+
+  return state;
+}
+
+MainWindow::ProcessTreeViewState MainWindow::CaptureTreeViewState() const {
+  ProcessTreeViewState state;
+  std::vector<HTREEITEM> pending_items;
+  for (HTREEITEM root = TreeView_GetRoot(treeview_hwnd_); root != nullptr;
+       root = TreeView_GetNextSibling(treeview_hwnd_, root)) {
+    pending_items.push_back(root);
+  }
+  state.had_items = !pending_items.empty();
+
+  auto get_identity = [this](HTREEITEM item) -> std::optional<ProcessIdentity> {
+    TVITEMW tree_item{};
+    tree_item.mask = TVIF_PARAM;
+    tree_item.hItem = item;
+    if (!TreeView_GetItem(treeview_hwnd_, &tree_item) || tree_item.lParam == 0) {
+      return std::nullopt;
+    }
+    return GetProcessIdentity(*reinterpret_cast<ProcessItem*>(tree_item.lParam));
+  };
+
+  while (!pending_items.empty()) {
+    HTREEITEM item = pending_items.back();
+    pending_items.pop_back();
+
+    auto identity = get_identity(item);
+    if (identity.has_value() &&
+        (TreeView_GetItemState(treeview_hwnd_, item, TVIS_EXPANDED) & TVIS_EXPANDED) != 0) {
+      state.expanded_items.push_back(identity.value());
     }
 
-    if (proc->process_id == selected_pid) {
-      ListView_SetItemState(listview_hwnd_, i, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+    for (HTREEITEM child = TreeView_GetChild(treeview_hwnd_, item); child != nullptr;
+         child = TreeView_GetNextSibling(treeview_hwnd_, child)) {
+      pending_items.push_back(child);
+    }
+  }
+
+  HTREEITEM selected_item = TreeView_GetSelection(treeview_hwnd_);
+  if (selected_item != nullptr) {
+    state.selected_item = get_identity(selected_item);
+  }
+
+  HTREEITEM first_visible_item = TreeView_GetFirstVisible(treeview_hwnd_);
+  if (first_visible_item != nullptr) {
+    state.first_visible_item = get_identity(first_visible_item);
+  }
+
+  return state;
+}
+
+void MainWindow::UpdateListView(const ProcessListViewState* preserved_state) {
+  ProcessListViewState state;
+  if (preserved_state != nullptr) {
+    state = *preserved_state;
+  } else if (list_view_data_current_) {
+    state = CaptureListViewState();
+  } else if (saved_list_view_state_.has_value()) {
+    state = saved_list_view_state_.value();
+  }
+  SortItems();
+
+  SendMessageW(listview_hwnd_, WM_SETREDRAW, FALSE, 0);
+  ListView_SetItemCountEx(listview_hwnd_, static_cast<int>(filtered_processes_.size()),
+                          LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
+  ListView_SetItemState(listview_hwnd_, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
+
+  auto find_index = [this](const ProcessIdentity& identity) {
+    for (size_t i = 0; i < filtered_processes_.size(); ++i) {
+      auto candidate = GetProcessIdentity(*filtered_processes_[i]);
+      if (candidate.has_value() &&
+          IsSameProcessIdentity(candidate.value(), identity)) {
+        return static_cast<int>(i);
+      }
+    }
+    return -1;
+  };
+
+  for (const auto& identity : state.selected_items) {
+    int index = find_index(identity);
+    if (index >= 0) {
+      ListView_SetItemState(listview_hwnd_, index, LVIS_SELECTED, LVIS_SELECTED);
+    }
+  }
+
+  if (state.focused_item.has_value()) {
+    int index = find_index(state.focused_item.value());
+    if (index >= 0) {
+      ListView_SetItemState(listview_hwnd_, index, LVIS_FOCUSED, LVIS_FOCUSED);
+    }
+  }
+
+  if (state.top_item.has_value() && !filtered_processes_.empty()) {
+    int target_index = find_index(state.top_item.value());
+    RECT item_rect{};
+    if (target_index >= 0 &&
+        ListView_GetItemRect(listview_hwnd_, 0, &item_rect, LVIR_BOUNDS)) {
+      int current_top = ListView_GetTopIndex(listview_hwnd_);
+      int row_height = item_rect.bottom - item_rect.top;
+      ListView_Scroll(listview_hwnd_, 0,
+                      (target_index - current_top) * row_height);
     }
   }
 
   SendMessageW(listview_hwnd_, WM_SETREDRAW, TRUE, 0);
   InvalidateRect(listview_hwnd_, nullptr, TRUE);
+  list_view_data_current_ = true;
 }
 
-void MainWindow::UpdateTreeView() {
+void MainWindow::UpdateTreeView(const ProcessTreeViewState* preserved_state) {
   SendMessageW(treeview_hwnd_, WM_SETREDRAW, FALSE, 0);
   TreeView_DeleteAllItems(treeview_hwnd_);
 
+  std::vector<TreeNodeHandle> node_handles;
   auto root_items = ProcessSnapshotService::BuildProcessTree(filtered_processes_);
   for (const auto& root : root_items) {
-    AddTreeNode(TVI_ROOT, root);
+    AddTreeNode(TVI_ROOT, root, &node_handles);
+  }
+
+  auto find_item = [&node_handles](const ProcessIdentity& identity) {
+    for (const auto& node : node_handles) {
+      if (IsSameProcessIdentity(node.identity, identity)) {
+        return node.item;
+      }
+    }
+    return static_cast<HTREEITEM>(nullptr);
+  };
+
+  if (preserved_state == nullptr || !preserved_state->had_items) {
+    std::vector<HTREEITEM> pending_items;
+    for (HTREEITEM root = TreeView_GetRoot(treeview_hwnd_); root != nullptr;
+         root = TreeView_GetNextSibling(treeview_hwnd_, root)) {
+      pending_items.push_back(root);
+    }
+    while (!pending_items.empty()) {
+      HTREEITEM item = pending_items.back();
+      pending_items.pop_back();
+      TreeView_Expand(treeview_hwnd_, item, TVE_EXPAND);
+      for (HTREEITEM child = TreeView_GetChild(treeview_hwnd_, item); child != nullptr;
+           child = TreeView_GetNextSibling(treeview_hwnd_, child)) {
+        pending_items.push_back(child);
+      }
+    }
+  } else {
+    for (const auto& identity : preserved_state->expanded_items) {
+      HTREEITEM item = find_item(identity);
+      if (item != nullptr) {
+        TreeView_Expand(treeview_hwnd_, item, TVE_EXPAND);
+      }
+    }
+
+    if (preserved_state->selected_item.has_value()) {
+      HTREEITEM item = find_item(preserved_state->selected_item.value());
+      if (item != nullptr) {
+        TreeView_SelectItem(treeview_hwnd_, item);
+      }
+    }
+
+    if (preserved_state->first_visible_item.has_value()) {
+      HTREEITEM item = find_item(preserved_state->first_visible_item.value());
+      if (item != nullptr) {
+        SendMessageW(treeview_hwnd_, TVM_SELECTITEM, TVGN_FIRSTVISIBLE,
+                     reinterpret_cast<LPARAM>(item));
+      }
+    }
   }
 
   SendMessageW(treeview_hwnd_, WM_SETREDRAW, TRUE, 0);
   InvalidateRect(treeview_hwnd_, nullptr, TRUE);
+  tree_view_data_current_ = true;
 }
 
-void MainWindow::AddTreeNode(HTREEITEM parent_node, const std::shared_ptr<ProcessItem>& process) {
+void MainWindow::AddTreeNode(HTREEITEM parent_node,
+                             const std::shared_ptr<ProcessItem>& process,
+                             std::vector<TreeNodeHandle>* node_handles) {
   int icon_idx = icon_helper_.GetIconIndex(process->file_path);
 
   std::wstring mem_label = LanguageManager::GetColumnHeaderText(ProcessColumnId::kWorkingSet);
@@ -1286,11 +1461,14 @@ void MainWindow::AddTreeNode(HTREEITEM parent_node, const std::shared_ptr<Proces
 
   HTREEITEM item = TreeView_InsertItem(treeview_hwnd_, &tvis);
 
-  for (const auto& child : process->children) {
-    AddTreeNode(item, child);
+  auto identity = GetProcessIdentity(*process);
+  if (item != nullptr && identity.has_value()) {
+    node_handles->push_back(TreeNodeHandle{identity.value(), item});
   }
 
-  TreeView_Expand(treeview_hwnd_, item, TVE_EXPAND);
+  for (const auto& child : process->children) {
+    AddTreeNode(item, child, node_handles);
+  }
 }
 
 std::shared_ptr<ProcessItem> MainWindow::GetSelectedProcess() {
@@ -1309,16 +1487,8 @@ std::shared_ptr<ProcessItem> MainWindow::GetSelectedProcess() {
     }
   } else {
     int sel = ListView_GetNextItem(listview_hwnd_, -1, LVNI_SELECTED);
-    if (sel >= 0) {
-      LVITEMW lvi = {0};
-      lvi.mask = LVIF_PARAM;
-      lvi.iItem = sel;
-      if (ListView_GetItem(listview_hwnd_, &lvi) && lvi.lParam != 0) {
-        auto* raw_ptr = reinterpret_cast<ProcessItem*>(lvi.lParam);
-        for (const auto& proc : all_processes_) {
-          if (proc.get() == raw_ptr) return proc;
-        }
-      }
+    if (sel >= 0 && sel < static_cast<int>(filtered_processes_.size())) {
+      return filtered_processes_[sel];
     }
   }
   return nullptr;
@@ -1332,17 +1502,8 @@ std::vector<std::shared_ptr<ProcessItem>> MainWindow::GetSelectedProcesses() {
   } else {
     int sel_idx = -1;
     while ((sel_idx = ListView_GetNextItem(listview_hwnd_, sel_idx, LVNI_SELECTED)) != -1) {
-      LVITEMW lvi = {0};
-      lvi.mask = LVIF_PARAM;
-      lvi.iItem = sel_idx;
-      if (ListView_GetItem(listview_hwnd_, &lvi) && lvi.lParam != 0) {
-        auto* raw_ptr = reinterpret_cast<ProcessItem*>(lvi.lParam);
-        for (const auto& proc : all_processes_) {
-          if (proc.get() == raw_ptr) {
-            selected.push_back(proc);
-            break;
-          }
-        }
+      if (sel_idx >= 0 && sel_idx < static_cast<int>(filtered_processes_.size())) {
+        selected.push_back(filtered_processes_[sel_idx]);
       }
     }
   }
@@ -2220,6 +2381,8 @@ void MainWindow::ResizeChildren(int width, int height) {
 }
 
 void MainWindow::OnTabChanged() {
+  KillTimer(hwnd_, IDT_SEARCH_DEBOUNCE_TIMER);
+
   int sel = TabCtrl_GetCurSel(tab_control_);
   current_tab_ = (sel == 1) ? MainTab::kServices : MainTab::kProcesses;
 
@@ -2555,20 +2718,44 @@ void MainWindow::GoToSelectedServiceProcess() {
   TabCtrl_SetCurSel(tab_control_, 0);
   OnTabChanged();
 
-  int count = ListView_GetItemCount(listview_hwnd_);
-  for (int i = 0; i < count; ++i) {
-    LVITEMW lvi = {0};
-    lvi.mask = LVIF_PARAM;
-    lvi.iItem = i;
-    if (ListView_GetItem(listview_hwnd_, &lvi) && lvi.lParam) {
-      auto* pItem = reinterpret_cast<ProcessItem*>(lvi.lParam);
-      if (pItem->process_id == svc->pid) {
-        ListView_SetItemState(listview_hwnd_, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
-        ListView_SetItemState(listview_hwnd_, i, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-        ListView_EnsureVisible(listview_hwnd_, i, FALSE);
-        SetFocus(listview_hwnd_);
-        break;
+  if (settings_.display_mode == ViewDisplayMode::kProcessTree) {
+    std::vector<HTREEITEM> pending_items;
+    for (HTREEITEM root = TreeView_GetRoot(treeview_hwnd_); root != nullptr;
+         root = TreeView_GetNextSibling(treeview_hwnd_, root)) {
+      pending_items.push_back(root);
+    }
+    while (!pending_items.empty()) {
+      HTREEITEM item = pending_items.back();
+      pending_items.pop_back();
+
+      TVITEMW tree_item{};
+      tree_item.mask = TVIF_PARAM;
+      tree_item.hItem = item;
+      if (TreeView_GetItem(treeview_hwnd_, &tree_item) && tree_item.lParam != 0 &&
+          reinterpret_cast<ProcessItem*>(tree_item.lParam)->process_id == svc->pid) {
+        TreeView_SelectItem(treeview_hwnd_, item);
+        TreeView_EnsureVisible(treeview_hwnd_, item);
+        SetFocus(treeview_hwnd_);
+        return;
       }
+
+      for (HTREEITEM child = TreeView_GetChild(treeview_hwnd_, item); child != nullptr;
+           child = TreeView_GetNextSibling(treeview_hwnd_, child)) {
+        pending_items.push_back(child);
+      }
+    }
+    return;
+  }
+
+  for (size_t i = 0; i < filtered_processes_.size(); ++i) {
+    if (filtered_processes_[i]->process_id == svc->pid) {
+      ListView_SetItemState(listview_hwnd_, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
+      ListView_SetItemState(listview_hwnd_, static_cast<int>(i),
+                            LVIS_SELECTED | LVIS_FOCUSED,
+                            LVIS_SELECTED | LVIS_FOCUSED);
+      ListView_EnsureVisible(listview_hwnd_, static_cast<int>(i), FALSE);
+      SetFocus(listview_hwnd_);
+      break;
     }
   }
 }
@@ -2754,6 +2941,13 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
     case WM_TIMER: {
       if (wparam == IDT_REFRESH_TIMER) {
         RefreshData();
+      } else if (wparam == IDT_SEARCH_DEBOUNCE_TIMER) {
+        KillTimer(hwnd_, IDT_SEARCH_DEBOUNCE_TIMER);
+        if (current_tab_ == MainTab::kServices) {
+          ApplyServiceFilterAndDisplay();
+        } else {
+          ApplyFilterAndDisplay();
+        }
       }
       return 0;
     }
@@ -2763,11 +2957,9 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
       int code = HIWORD(wparam);
 
       if (id == IDC_SEARCH_EDIT && code == EN_CHANGE) {
-        if (current_tab_ == MainTab::kServices) {
-          ApplyServiceFilterAndDisplay();
-        } else {
-          ApplyFilterAndDisplay();
-        }
+        KillTimer(hwnd_, IDT_SEARCH_DEBOUNCE_TIMER);
+        SetTimer(hwnd_, IDT_SEARCH_DEBOUNCE_TIMER,
+                 kSearchDebounceMilliseconds, nullptr);
         InvalidateRect(search_edit_, nullptr, TRUE);
         return 0;
       }
@@ -2974,7 +3166,35 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
       }
 
       if (nmhdr->hwndFrom == listview_hwnd_) {
-        if (nmhdr->code == NM_CUSTOMDRAW) {
+        if (nmhdr->code == LVN_GETDISPINFOW) {
+          auto* display_info = reinterpret_cast<NMLVDISPINFOW*>(lparam);
+          int item_index = display_info->item.iItem;
+          int subitem_index = display_info->item.iSubItem;
+          if (item_index < 0 ||
+              item_index >= static_cast<int>(filtered_processes_.size())) {
+            return 0;
+          }
+
+          const auto& process = filtered_processes_[item_index];
+          if ((display_info->item.mask & LVIF_TEXT) != 0 &&
+              display_info->item.pszText != nullptr &&
+              display_info->item.cchTextMax > 0) {
+            display_info->item.pszText[0] = L'\0';
+            if (subitem_index >= 0 &&
+                subitem_index < static_cast<int>(visible_process_columns_.size())) {
+              std::wstring value = process->GetColumnValue(
+                  visible_process_columns_[subitem_index]);
+              wcsncpy_s(display_info->item.pszText,
+                        display_info->item.cchTextMax, value.c_str(), _TRUNCATE);
+            }
+          }
+
+          if ((display_info->item.mask & LVIF_IMAGE) != 0 &&
+              subitem_index == 0) {
+            display_info->item.iImage = icon_helper_.GetIconIndex(process->file_path);
+          }
+          return 0;
+        } else if (nmhdr->code == NM_CUSTOMDRAW) {
           if (settings_.theme == AppTheme::kDark) {
             auto* lplvcd = reinterpret_cast<LPNMLVCUSTOMDRAW>(lparam);
             switch (lplvcd->nmcd.dwDrawStage) {
@@ -3195,6 +3415,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
         RemoveWindowSubclass(header, HeaderSubclassProc, 1);
       }
       KillTimer(hwnd_, IDT_REFRESH_TIMER);
+      KillTimer(hwnd_, IDT_SEARCH_DEBOUNCE_TIMER);
       PostQuitMessage(0);
       return 0;
     }

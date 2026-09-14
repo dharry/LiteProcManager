@@ -43,6 +43,29 @@ class MainWindow {
   bool IsDarkMode() const { return false; }
 
  private:
+  struct ProcessIdentity {
+    uint32_t process_id{0};
+    uint64_t creation_time{0};
+  };
+
+  struct ProcessListViewState {
+    std::vector<ProcessIdentity> selected_items;
+    std::optional<ProcessIdentity> focused_item;
+    std::optional<ProcessIdentity> top_item;
+  };
+
+  struct ProcessTreeViewState {
+    bool had_items{false};
+    std::vector<ProcessIdentity> expanded_items;
+    std::optional<ProcessIdentity> selected_item;
+    std::optional<ProcessIdentity> first_visible_item;
+  };
+
+  struct TreeNodeHandle {
+    ProcessIdentity identity;
+    HTREEITEM item{nullptr};
+  };
+
   static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
   LRESULT HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 
@@ -56,10 +79,15 @@ class MainWindow {
   void ApplyConditionFilter();
   void OnFilterConditionChanged();
   void ApplyFilterAndDisplay();
-  void UpdateListView();
-  void UpdateTreeView();
-  void AddTreeNode(HTREEITEM parent_node, const std::shared_ptr<ProcessItem>& process);
+  void UpdateListView(const ProcessListViewState* preserved_state = nullptr);
+  void UpdateTreeView(const ProcessTreeViewState* preserved_state = nullptr);
+  void AddTreeNode(HTREEITEM parent_node, const std::shared_ptr<ProcessItem>& process,
+                   std::vector<TreeNodeHandle>* node_handles);
   void SortItems();
+  static std::optional<ProcessIdentity> GetProcessIdentity(const ProcessItem& process);
+  static bool IsSameProcessIdentity(const ProcessIdentity& lhs, const ProcessIdentity& rhs);
+  ProcessListViewState CaptureListViewState() const;
+  ProcessTreeViewState CaptureTreeViewState() const;
 
   std::shared_ptr<ProcessItem> GetSelectedProcess();
   std::vector<std::shared_ptr<ProcessItem>> GetSelectedProcesses();
@@ -162,6 +190,11 @@ class MainWindow {
   std::vector<std::shared_ptr<ProcessItem>> all_processes_;
   std::vector<std::shared_ptr<ProcessItem>> display_processes_;
   std::vector<std::shared_ptr<ProcessItem>> filtered_processes_;
+  std::vector<ProcessColumnId> visible_process_columns_;
+  std::optional<ProcessListViewState> saved_list_view_state_;
+  std::optional<ProcessTreeViewState> saved_tree_view_state_;
+  bool list_view_data_current_{false};
+  bool tree_view_data_current_{false};
   SystemTotals totals_;
 
   int sort_column_index_{0};
