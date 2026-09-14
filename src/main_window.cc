@@ -21,6 +21,7 @@
 #include "options_dialog.h"
 #include "resource.h"
 #include "theme_manager.h"
+#include "tsv_helper.h"
 #include "version.h"
 
 #pragma comment(lib, "comctl32.lib")
@@ -1524,7 +1525,7 @@ void MainWindow::CopySelectedAsTsv() {
   // Header row
   for (size_t c = 0; c < visible_cols.size(); ++c) {
     if (c > 0) oss << L"\t";
-    oss << visible_cols[c].header_text;
+    oss << SanitizeTsvCell(visible_cols[c].header_text);
   }
   oss << L"\r\n";
 
@@ -1532,11 +1533,7 @@ void MainWindow::CopySelectedAsTsv() {
   for (const auto& proc : selected_procs) {
     for (size_t c = 0; c < visible_cols.size(); ++c) {
       if (c > 0) oss << L"\t";
-      std::wstring val = proc->GetColumnValue(visible_cols[c].id);
-      for (auto& ch : val) {
-        if (ch == L'\t' || ch == L'\r' || ch == L'\n') ch = L' ';
-      }
-      oss << val;
+      oss << SanitizeTsvCell(proc->GetColumnValue(visible_cols[c].id));
     }
     oss << L"\r\n";
   }
@@ -1747,11 +1744,6 @@ void MainWindow::ShowHeaderContextMenu(int x, int y, int col_index) {
   AppendMenuW(menu, hide_flags, IDM_HIDE_COLUMN, LanguageManager::GetString(StringId::kMenuHideColumn));
   AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(menu, MF_STRING, IDM_SELECT_COLUMNS, LanguageManager::GetString(StringId::kMenuSelectColumns));
-
-  MENUINFO mi = {sizeof(MENUINFO)};
-  mi.fMask = MIM_BACKGROUND | MIM_APPLYTOSUBMENUS;
-  mi.hbrBack = GetSysColorBrush(COLOR_MENU);
-  SetMenuInfo(menu, &mi);
 
   SetForegroundWindow(hwnd_);
   TrackPopupMenu(menu, TPM_RIGHTBUTTON, x, y, 0, hwnd_, nullptr);
@@ -2005,20 +1997,6 @@ void MainWindow::UpdateLanguageAndUI() {
   AppendMenuW(help_menu, MF_STRING, IDM_ABOUT, version_label.c_str());
   AppendMenuW(new_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(help_menu), LanguageManager::GetString(StringId::kMenuHelp));
 
-  // Apply Menu Theme (Background & Submenus)
-  auto apply_menu_info = [&](HMENU hmenu) {
-    if (!hmenu) return;
-    MENUINFO mi = {sizeof(MENUINFO)};
-    mi.fMask = MIM_BACKGROUND | MIM_APPLYTOSUBMENUS;
-    mi.hbrBack = GetSysColorBrush(COLOR_MENU);
-    SetMenuInfo(hmenu, &mi);
-  };
-
-  apply_menu_info(new_menu);
-  apply_menu_info(file_menu);
-  apply_menu_info(view_menu);
-  apply_menu_info(help_menu);
-
   SetMenu(hwnd_, new_menu);
   if (old_menu) DestroyMenu(old_menu);
   DrawMenuBar(hwnd_);
@@ -2063,10 +2041,6 @@ void MainWindow::UpdateLanguageAndUI() {
   AppendMenuW(context_menu_, MF_STRING, IDM_HIDE_COLUMN, LanguageManager::GetString(StringId::kMenuHideColumn));
   AppendMenuW(context_menu_, MF_STRING, IDM_SELECT_COLUMNS, LanguageManager::GetString(StringId::kMenuSelectColumns));
 
-  apply_menu_info(context_menu_);
-  apply_menu_info(priority_menu);
-  apply_menu_info(copy_menu);
-
   // Update Tray Menu
   if (tray_menu_) DestroyMenu(tray_menu_);
   tray_menu_ = CreatePopupMenu();
@@ -2076,8 +2050,6 @@ void MainWindow::UpdateLanguageAndUI() {
   AppendMenuW(tray_menu_, MF_STRING, IDM_ALWAYS_ON_TOP, LanguageManager::GetString(StringId::kMenuAlwaysOnTop));
   AppendMenuW(tray_menu_, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(tray_menu_, MF_STRING, IDM_TRAY_EXIT, LanguageManager::GetString(StringId::kMenuExit));
-
-  apply_menu_info(tray_menu_);
 
   bool is_tree = (settings_.display_mode == ViewDisplayMode::kProcessTree);
   SetControlTooltip(btn_tree_, is_tree ? LanguageManager::GetString(StringId::kTooltipViewList) : LanguageManager::GetString(StringId::kTooltipViewTree));

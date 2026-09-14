@@ -19,6 +19,7 @@
 #include "../include/process_snapshot_service.h"
 #include "../include/service_item.h"
 #include "../include/service_manager_service.h"
+#include "../include/tsv_helper.h"
 #include "../include/version.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -92,6 +93,28 @@ TEST_CLASS(ProcessSnapshotTests) {
 
 TEST_CLASS(ProcessItemTests) {
  public:
+  TEST_METHOD(SanitizeTsvCell_ShouldPreventFormulaInjection) {
+    ProcessItem untrusted_process;
+    untrusted_process.name = L"=HYPERLINK(\"https://example.test\")";
+    untrusted_process.description = L"+cmd|' /C calc'!A0";
+    untrusted_process.file_path = L"  @SUM(1,1)";
+
+    Assert::AreEqual(std::wstring(L"'=HYPERLINK(\"https://example.test\")"),
+                     SanitizeTsvCell(untrusted_process.GetColumnValue(ProcessColumnId::kName)));
+    Assert::AreEqual(std::wstring(L"'+cmd|' /C calc'!A0"),
+                     SanitizeTsvCell(untrusted_process.GetColumnValue(
+                         ProcessColumnId::kDescription)));
+    Assert::AreEqual(std::wstring(L"'-1+1"), SanitizeTsvCell(L"-1+1"));
+    Assert::AreEqual(std::wstring(L"'  @SUM(1,1)"),
+                     SanitizeTsvCell(untrusted_process.GetColumnValue(
+                         ProcessColumnId::kFilePath)));
+    Assert::AreEqual(std::wstring(L"' =1+1"), SanitizeTsvCell(L"\t=1+1"));
+    Assert::AreEqual(std::wstring(L"safe process.exe"),
+                     SanitizeTsvCell(L"safe process.exe"));
+    Assert::AreEqual(std::wstring(L"name description path"),
+                     SanitizeTsvCell(L"name\tdescription\npath"));
+  }
+
   TEST_METHOD(Formatting_ShouldReturnValidStrings) {
     ProcessItem item;
     item.process_id = 1234;

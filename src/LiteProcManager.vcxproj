@@ -104,6 +104,7 @@
     <ClInclude Include="..\include\service_manager_service.h" />
     <ClInclude Include="..\include\theme_manager.h" />
     <ClInclude Include="..\include\toast_window.h" />
+    <ClInclude Include="..\include\tsv_helper.h" />
     <ClInclude Include="..\include\version.h" />
   </ItemGroup>
   <ItemGroup>
