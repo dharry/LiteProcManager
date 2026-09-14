@@ -52,6 +52,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, PWSTR /*pC
 
   g_single_instance_mutex = mutex;
 
+  HRESULT com_result = CoInitializeEx(
+      nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
   int exit_code = 0;
   {
     lite_proc_manager::MainWindow main_window;
@@ -65,5 +68,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, PWSTR /*pC
   // A restart flow may have already released and cleared this via
   // ReleaseSingleInstanceLock().
   ReleaseSingleInstanceLock();
+  if (SUCCEEDED(com_result)) {
+    CoUninitialize();
+  }
   return exit_code;
 }

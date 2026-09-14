@@ -25,6 +25,7 @@ target_include_directories(LiteProcManager PRIVATE
 
 target_link_libraries(LiteProcManager PRIVATE
     comctl32
+    ole32
     dwmapi
     uxtheme
     shell32

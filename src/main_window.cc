@@ -6,6 +6,7 @@
 #include <windowsx.h>
 #include <commctrl.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <uxtheme.h>
 
 #include <algorithm>
@@ -23,6 +24,7 @@
 #include "version.h"
 
 #pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "shell32.lib")
 
@@ -35,6 +37,33 @@ void RestoreSingleInstanceLock(HANDLE mutex);
 namespace lite_proc_manager {
 
 namespace {
+HRESULT OpenFolderAndSelectFile(const std::wstring& file_path) {
+  PIDLIST_ABSOLUTE item_pidl = nullptr;
+  HRESULT result = SHParseDisplayName(
+      file_path.c_str(), nullptr, &item_pidl, 0, nullptr);
+  if (FAILED(result)) {
+    return result;
+  }
+
+  PIDLIST_ABSOLUTE folder_pidl = ILClone(item_pidl);
+  if (!folder_pidl) {
+    CoTaskMemFree(item_pidl);
+    return E_OUTOFMEMORY;
+  }
+
+  PCUITEMID_CHILD child_pidl = ILFindLastID(item_pidl);
+  if (!ILRemoveLastID(folder_pidl)) {
+    CoTaskMemFree(folder_pidl);
+    CoTaskMemFree(item_pidl);
+    return E_INVALIDARG;
+  }
+
+  result = SHOpenFolderAndSelectItems(folder_pidl, 1, &child_pidl, 0);
+  CoTaskMemFree(folder_pidl);
+  CoTaskMemFree(item_pidl);
+  return result;
+}
+
 const wchar_t* GetColumnJsonKey(ProcessColumnId id) {
   switch (id) {
     case ProcessColumnId::kName: return L"name";
@@ -1392,8 +1421,10 @@ void MainWindow::OpenSelectedFileLocation() {
     return;
   }
 
-  std::wstring params = L"/select,\"" + proc->file_path + L"\"";
-  ShellExecuteW(nullptr, L"open", L"explorer.exe", params.c_str(), nullptr, SW_SHOW);
+  if (FAILED(OpenFolderAndSelectFile(proc->file_path))) {
+    MessageBoxW(hwnd_, LanguageManager::GetString(StringId::kMsgFileNotFound),
+                LanguageManager::GetString(StringId::kTitleInfo), MB_OK | MB_ICONINFORMATION);
+  }
 }
 
 void MainWindow::SearchSelectedProcessOnline() {
