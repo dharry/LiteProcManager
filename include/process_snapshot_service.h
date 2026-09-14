@@ -31,12 +31,38 @@ struct SnapshotResult {
   SystemTotals totals;
 };
 
+struct ProcessSnapshotOptions {
+  bool query_priority{true};
+  bool query_user_objects{true};
+  bool query_gdi_objects{true};
+
+  static ProcessSnapshotOptions None() {
+    return {false, false, false};
+  }
+
+  void IncludeColumn(ProcessColumnId column_id) {
+    switch (column_id) {
+      case ProcessColumnId::kBasePriority:
+        query_priority = true;
+        break;
+      case ProcessColumnId::kUserObjects:
+        query_user_objects = true;
+        break;
+      case ProcessColumnId::kGdiObjects:
+        query_gdi_objects = true;
+        break;
+      default:
+        break;
+    }
+  }
+};
+
 class ProcessSnapshotService {
  public:
   ProcessSnapshotService();
   ~ProcessSnapshotService();
 
-  SnapshotResult GetSnapshot();
+  SnapshotResult GetSnapshot(const ProcessSnapshotOptions& options = {});
 
   static bool TerminateProcess(const ProcessItem& process);
   bool TerminateProcessTree(
@@ -71,7 +97,7 @@ class ProcessSnapshotService {
     ProcessPriorityClass priority{ProcessPriorityClass::kNormal};
   };
 
-  void EnrichProcessDetails(ProcessItem* item);
+  void EnrichProcessDetails(ProcessItem* item, const ProcessSnapshotOptions& options);
   static std::wstring QueryProcessUser(HANDLE process_handle);
 
   PfnNtQuerySystemInformation pfn_nt_query_system_information_{nullptr};

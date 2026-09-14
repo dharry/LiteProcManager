@@ -50,6 +50,24 @@ FILETIME MakeFileTime(uint64_t value) {
 
 TEST_CLASS(ProcessSnapshotTests) {
  public:
+  TEST_METHOD(SnapshotOptions_ShouldIncludeOnlyRequestedDynamicColumns) {
+    auto options = ProcessSnapshotOptions::None();
+    Assert::IsFalse(options.query_priority);
+    Assert::IsFalse(options.query_user_objects);
+    Assert::IsFalse(options.query_gdi_objects);
+
+    options.IncludeColumn(ProcessColumnId::kUserObjects);
+    Assert::IsFalse(options.query_priority);
+    Assert::IsTrue(options.query_user_objects);
+    Assert::IsFalse(options.query_gdi_objects);
+
+    options.IncludeColumn(ProcessColumnId::kBasePriority);
+    options.IncludeColumn(ProcessColumnId::kGdiObjects);
+    Assert::IsTrue(options.query_priority);
+    Assert::IsTrue(options.query_user_objects);
+    Assert::IsTrue(options.query_gdi_objects);
+  }
+
   TEST_METHOD(ShouldRetrieveProcessList) {
     ProcessSnapshotService service;
     auto result = service.GetSnapshot();

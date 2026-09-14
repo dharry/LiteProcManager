@@ -335,6 +335,29 @@ bool IsProcessExcluded(const std::wstring& proc_name, const std::vector<std::wst
   return false;
 }
 
+ProcessSnapshotOptions BuildProcessSnapshotOptions(const AppSettings& settings) {
+  ProcessSnapshotOptions options = ProcessSnapshotOptions::None();
+
+  for (const auto& column : settings.columns) {
+    if (column.visible) {
+      options.IncludeColumn(column.id);
+    }
+  }
+
+  if (settings.display_filter_enabled) {
+    options.IncludeColumn(settings.display_filter_condition.column_id);
+  }
+
+  for (const auto& rule : settings.monitor_rules) {
+    if (!rule.enabled) continue;
+    for (const auto& condition : rule.conditions) {
+      options.IncludeColumn(condition.column_id);
+    }
+  }
+
+  return options;
+}
+
 }  // namespace
 
 MainWindow::MainWindow() : settings_(AppSettings::Load()) {
@@ -877,7 +900,7 @@ void MainWindow::RefreshData() {
     return;
   }
 
-  auto result = snapshot_service_.GetSnapshot();
+  auto result = snapshot_service_.GetSnapshot(BuildProcessSnapshotOptions(settings_));
   all_processes_ = std::move(result.items);
   totals_ = result.totals;
 

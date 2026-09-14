@@ -148,7 +148,7 @@ ProcessSnapshotService::~ProcessSnapshotService() {
   }
 }
 
-SnapshotResult ProcessSnapshotService::GetSnapshot() {
+SnapshotResult ProcessSnapshotService::GetSnapshot(const ProcessSnapshotOptions& options) {
   SnapshotResult result;
 
   // 1. Calculate high-precision System Total CPU time across all cores
@@ -278,7 +278,7 @@ SnapshotResult ProcessSnapshotService::GetSnapshot() {
       item->working_set_delta = static_cast<int64_t>(item->working_set) - static_cast<int64_t>(it_prev->second.working_set);
     }
 
-    EnrichProcessDetails(item.get());
+    EnrichProcessDetails(item.get(), options);
 
     result.totals.total_threads += item->thread_count;
     result.totals.total_handles += item->handle_count;
@@ -326,7 +326,8 @@ SnapshotResult ProcessSnapshotService::GetSnapshot() {
   return result;
 }
 
-void ProcessSnapshotService::EnrichProcessDetails(ProcessItem* item) {
+void ProcessSnapshotService::EnrichProcessDetails(
+    ProcessItem* item, const ProcessSnapshotOptions& options) {
   if (item->process_id == 0 || item->process_id == 4) {
     item->user_name = L"NT AUTHORITY\\SYSTEM";
     item->architecture = L"x64";
@@ -365,17 +366,26 @@ void ProcessSnapshotService::EnrichProcessDetails(ProcessItem* item) {
       item->package_name = cache_it->second.package_name;
       item->priority = cache_it->second.priority;
 
-      // Gui objects and priority are dynamic, query directly
-      HANDLE h_quick = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, item->process_id);
-      if (h_quick) {
-        DWORD priority_class = GetPriorityClass(h_quick);
-        if (priority_class != 0) {
-          item->priority = static_cast<ProcessPriorityClass>(priority_class);
-          cache_it->second.priority = item->priority;
+      if (options.query_priority || options.query_user_objects ||
+          options.query_gdi_objects) {
+        HANDLE h_quick = OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, FALSE, item->process_id);
+        if (h_quick) {
+          if (options.query_priority) {
+            DWORD priority_class = GetPriorityClass(h_quick);
+            if (priority_class != 0) {
+              item->priority = static_cast<ProcessPriorityClass>(priority_class);
+              cache_it->second.priority = item->priority;
+            }
+          }
+          if (options.query_user_objects) {
+            item->user_objects = GetGuiResources(h_quick, GR_USEROBJECTS);
+          }
+          if (options.query_gdi_objects) {
+            item->gdi_objects = GetGuiResources(h_quick, GR_GDIOBJECTS);
+          }
+          CloseHandle(h_quick);
         }
-        item->user_objects = GetGuiResources(h_quick, GR_USEROBJECTS);
-        item->gdi_objects = GetGuiResources(h_quick, GR_GDIOBJECTS);
-        CloseHandle(h_quick);
       }
       return;
     }
@@ -394,9 +404,11 @@ void ProcessSnapshotService::EnrichProcessDetails(ProcessItem* item) {
     }
 
     // 2. Priority
-    DWORD priority_class = GetPriorityClass(process_handle);
-    if (priority_class != 0) {
-      new_cache.priority = static_cast<ProcessPriorityClass>(priority_class);
+    if (options.query_priority) {
+      DWORD priority_class = GetPriorityClass(process_handle);
+      if (priority_class != 0) {
+        new_cache.priority = static_cast<ProcessPriorityClass>(priority_class);
+      }
     }
 
     // 3. Architecture & Platform
@@ -410,8 +422,12 @@ void ProcessSnapshotService::EnrichProcessDetails(ProcessItem* item) {
     }
 
     // 4. GUI Objects (User & GDI)
-    item->user_objects = GetGuiResources(process_handle, GR_USEROBJECTS);
-    item->gdi_objects = GetGuiResources(process_handle, GR_GDIOBJECTS);
+    if (options.query_user_objects) {
+      item->user_objects = GetGuiResources(process_handle, GR_USEROBJECTS);
+    }
+    if (options.query_gdi_objects) {
+      item->gdi_objects = GetGuiResources(process_handle, GR_GDIOBJECTS);
+    }
 
     // 5. Description from File Version Info
     if (!new_cache.file_path.empty()) {
