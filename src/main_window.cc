@@ -38,6 +38,11 @@ void RestoreSingleInstanceLock(HANDLE mutex);
 namespace lite_proc_manager {
 
 namespace {
+struct ServiceSnapshotMessage {
+  uint64_t generation{0};
+  std::vector<std::shared_ptr<ServiceItem>> services;
+};
+
 HRESULT OpenFolderAndSelectFile(const std::wstring& file_path) {
   PIDLIST_ABSOLUTE item_pidl = nullptr;
   HRESULT result = SHParseDisplayName(
@@ -354,6 +359,8 @@ MainWindow::MainWindow() : settings_(AppSettings::Load()) {
 }
 
 MainWindow::~MainWindow() {
+  StopServiceRefreshWorker();
+
   if (notify_icon_data_.cbSize > 0) {
     Shell_NotifyIconW(NIM_DELETE, &notify_icon_data_);
   }
@@ -429,6 +436,7 @@ bool MainWindow::Create(HINSTANCE instance, int cmd_show) {
 
   InitializeComponents();
   ApplyTheme();
+  StartServiceRefreshWorker();
 
   ShowWindow(hwnd_, settings_.is_maximized ? SW_MAXIMIZE : cmd_show);
   UpdateWindow(hwnd_);
@@ -2249,9 +2257,69 @@ void MainWindow::RebuildServiceListViewColumns() {
 }
 
 void MainWindow::RefreshServicesData() {
-  all_services_ = service_manager_service_.GetServicesSnapshot();
-  ApplyServiceFilterAndDisplay();
-  UpdateStatusLabels();
+  {
+    std::lock_guard<std::mutex> lock(service_refresh_mutex_);
+    if (service_refresh_stopping_) return;
+    ++service_refresh_requested_generation_;
+    service_refresh_requested_ = true;
+  }
+  service_refresh_cv_.notify_one();
+}
+
+void MainWindow::StartServiceRefreshWorker() {
+  service_refresh_cancellation_.store(false, std::memory_order_relaxed);
+  service_refresh_thread_ = std::thread(&MainWindow::ServiceRefreshWorker, this);
+}
+
+void MainWindow::StopServiceRefreshWorker() {
+  {
+    std::lock_guard<std::mutex> lock(service_refresh_mutex_);
+    service_refresh_stopping_ = true;
+    service_refresh_cancellation_.store(true, std::memory_order_relaxed);
+  }
+  service_refresh_cv_.notify_one();
+
+  if (service_refresh_thread_.joinable()) {
+    service_refresh_thread_.join();
+  }
+
+  if (hwnd_) {
+    MSG message{};
+    while (PeekMessageW(&message, hwnd_, WM_APP_SERVICE_SNAPSHOT_READY,
+                        WM_APP_SERVICE_SNAPSHOT_READY, PM_REMOVE)) {
+      delete reinterpret_cast<ServiceSnapshotMessage*>(message.lParam);
+    }
+  }
+}
+
+void MainWindow::ServiceRefreshWorker() {
+  while (true) {
+    uint64_t generation = 0;
+    {
+      std::unique_lock<std::mutex> lock(service_refresh_mutex_);
+      service_refresh_cv_.wait(lock, [this] {
+        return service_refresh_stopping_ || service_refresh_requested_;
+      });
+      if (service_refresh_stopping_) return;
+
+      generation = service_refresh_requested_generation_;
+      service_refresh_requested_ = false;
+    }
+
+    auto services = service_manager_service_.GetServicesSnapshot(
+        &service_refresh_cancellation_);
+    if (service_refresh_cancellation_.load(std::memory_order_relaxed)) {
+      return;
+    }
+
+    auto message = std::make_unique<ServiceSnapshotMessage>();
+    message->generation = generation;
+    message->services = std::move(services);
+    if (PostMessageW(hwnd_, WM_APP_SERVICE_SNAPSHOT_READY, 0,
+                     reinterpret_cast<LPARAM>(message.get()))) {
+      message.release();
+    }
+  }
 }
 
 void MainWindow::SortServices() {
@@ -2643,6 +2711,20 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
       }
 
       ResizeChildren(w, h);
+      return 0;
+    }
+
+    case WM_APP_SERVICE_SNAPSHOT_READY: {
+      std::unique_ptr<ServiceSnapshotMessage> snapshot(
+          reinterpret_cast<ServiceSnapshotMessage*>(lparam));
+      if (snapshot && snapshot->generation > service_refresh_applied_generation_) {
+        service_refresh_applied_generation_ = snapshot->generation;
+        all_services_ = std::move(snapshot->services);
+        if (current_tab_ == MainTab::kServices) {
+          ApplyServiceFilterAndDisplay();
+          UpdateStatusLabels();
+        }
+      }
       return 0;
     }
 
@@ -3084,6 +3166,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
     }
 
     case WM_DESTROY: {
+      StopServiceRefreshWorker();
       HWND header = ListView_GetHeader(listview_hwnd_);
       if (header) {
         RemoveWindowSubclass(header, HeaderSubclassProc, 1);

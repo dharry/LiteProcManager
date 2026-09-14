@@ -7,9 +7,14 @@
 #include <commctrl.h>
 #include <shellapi.h>
 
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "app_settings.h"
@@ -94,6 +99,9 @@ class MainWindow {
   void OnTabChanged();
   void RebuildServiceListViewColumns();
   void RefreshServicesData();
+  void StartServiceRefreshWorker();
+  void StopServiceRefreshWorker();
+  void ServiceRefreshWorker();
   void ApplyServiceFilterAndDisplay();
   void UpdateServiceListView();
   void SortServices();
@@ -163,6 +171,14 @@ class MainWindow {
   std::vector<std::shared_ptr<ServiceItem>> filtered_services_;
   int service_sort_column_{0};
   bool service_sort_ascending_{true};
+  std::thread service_refresh_thread_;
+  std::mutex service_refresh_mutex_;
+  std::condition_variable service_refresh_cv_;
+  bool service_refresh_requested_{false};
+  bool service_refresh_stopping_{false};
+  std::atomic_bool service_refresh_cancellation_{false};
+  uint64_t service_refresh_requested_generation_{0};
+  uint64_t service_refresh_applied_generation_{0};
 
   HBRUSH search_active_brush_{nullptr};
   HFONT list_font_{nullptr};

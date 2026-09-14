@@ -724,6 +724,23 @@ TEST_CLASS(LanguageManagerTests) {
       }
     }
     Assert::IsTrue(found_rpcss);
+
+    auto warm_start = std::chrono::steady_clock::now();
+    auto warm_services = service.GetServicesSnapshot();
+    auto warm_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - warm_start);
+
+    Assert::AreEqual(services.size(), warm_services.size());
+    Assert::IsTrue(warm_elapsed < std::chrono::milliseconds(500));
+  }
+
+  TEST_METHOD(ServiceManagerService_CancelledSnapshotStopsEarly) {
+    ServiceManagerService service;
+    std::atomic_bool cancellation{true};
+
+    auto services = service.GetServicesSnapshot(&cancellation);
+
+    Assert::IsTrue(services.empty());
   }
 
   TEST_METHOD(ServiceItem_StateAndStartTypeStrings_ReturnNonEmpty) {

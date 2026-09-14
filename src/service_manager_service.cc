@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 #pragma comment(lib, "advapi32.lib")
@@ -33,8 +34,12 @@ std::wstring GetSystemErrorMessage(DWORD error_code) {
 
 }  // namespace
 
-std::vector<std::shared_ptr<ServiceItem>> ServiceManagerService::GetServicesSnapshot() {
+std::vector<std::shared_ptr<ServiceItem>> ServiceManagerService::GetServicesSnapshot(
+    const std::atomic_bool* cancellation) {
   std::vector<std::shared_ptr<ServiceItem>> result;
+  if (cancellation && cancellation->load(std::memory_order_relaxed)) {
+    return result;
+  }
 
   SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ENUMERATE_SERVICE | SC_MANAGER_CONNECT);
   if (!scm) {
@@ -50,7 +55,8 @@ std::vector<std::shared_ptr<ServiceItem>> ServiceManagerService::GetServicesSnap
       scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_STATE_ALL,
       nullptr, 0, &bytes_needed, &services_returned, &resume_handle, nullptr);
 
-  if (bytes_needed == 0) {
+  if (bytes_needed == 0 ||
+      (cancellation && cancellation->load(std::memory_order_relaxed))) {
     CloseServiceHandle(scm);
     return result;
   }
@@ -66,50 +72,100 @@ std::vector<std::shared_ptr<ServiceItem>> ServiceManagerService::GetServicesSnap
 
   auto* services = reinterpret_cast<ENUM_SERVICE_STATUS_PROCESSW*>(buffer.data());
   result.reserve(services_returned);
+  std::unordered_set<std::wstring> active_service_names;
+  active_service_names.reserve(services_returned);
+  bool cancelled = false;
+
+  constexpr auto kConfigCacheLifetime = std::chrono::minutes(5);
+  auto now = std::chrono::steady_clock::now();
 
   for (DWORD i = 0; i < services_returned; ++i) {
+    if (cancellation && cancellation->load(std::memory_order_relaxed)) {
+      cancelled = true;
+      break;
+    }
+
     auto item = std::make_shared<ServiceItem>();
     item->service_name = services[i].lpServiceName ? services[i].lpServiceName : L"";
     item->display_name = services[i].lpDisplayName ? services[i].lpDisplayName : L"";
     item->state = services[i].ServiceStatusProcess.dwCurrentState;
     item->pid = services[i].ServiceStatusProcess.dwProcessId;
+    active_service_names.insert(item->service_name);
 
-    // Open each service to query startup type, account, and description
-    SC_HANDLE svc = OpenServiceW(scm, services[i].lpServiceName, SERVICE_QUERY_CONFIG);
-    if (svc) {
-      DWORD cfg_bytes_needed = 0;
-      QueryServiceConfigW(svc, nullptr, 0, &cfg_bytes_needed);
-      if (cfg_bytes_needed > 0) {
-        std::vector<BYTE> cfg_buf(cfg_bytes_needed);
-        auto* qsc = reinterpret_cast<QUERY_SERVICE_CONFIGW*>(cfg_buf.data());
-        if (QueryServiceConfigW(svc, qsc, cfg_bytes_needed, &cfg_bytes_needed)) {
-          item->start_type = qsc->dwStartType;
-          if (qsc->lpServiceStartName) {
-            item->account_name = qsc->lpServiceStartName;
-          }
-        }
+    CachedServiceConfig config;
+    bool has_cached_config = false;
+    uint64_t cache_revision = 0;
+    {
+      std::lock_guard<std::mutex> lock(config_cache_mutex_);
+      cache_revision = config_cache_revision_;
+      auto cached = config_cache_.find(item->service_name);
+      if (cached != config_cache_.end() &&
+          now - cached->second.refreshed_at < kConfigCacheLifetime) {
+        config = cached->second;
+        has_cached_config = true;
       }
-
-      // Query Description
-      DWORD desc_bytes = 0;
-      QueryServiceConfig2W(svc, SERVICE_CONFIG_DESCRIPTION, nullptr, 0, &desc_bytes);
-      if (desc_bytes > 0) {
-        std::vector<BYTE> desc_buf(desc_bytes);
-        if (QueryServiceConfig2W(svc, SERVICE_CONFIG_DESCRIPTION, desc_buf.data(), desc_bytes, &desc_bytes)) {
-          auto* desc = reinterpret_cast<SERVICE_DESCRIPTIONW*>(desc_buf.data());
-          if (desc && desc->lpDescription) {
-            item->description = desc->lpDescription;
-          }
-        }
-      }
-
-      CloseServiceHandle(svc);
     }
 
+    if (!has_cached_config) {
+      config.refreshed_at = now;
+
+      // Static configuration is queried only on a cache miss or after expiry.
+      SC_HANDLE svc = OpenServiceW(scm, services[i].lpServiceName, SERVICE_QUERY_CONFIG);
+      if (svc) {
+        DWORD cfg_bytes_needed = 0;
+        QueryServiceConfigW(svc, nullptr, 0, &cfg_bytes_needed);
+        if (cfg_bytes_needed > 0) {
+          std::vector<BYTE> cfg_buf(cfg_bytes_needed);
+          auto* qsc = reinterpret_cast<QUERY_SERVICE_CONFIGW*>(cfg_buf.data());
+          if (QueryServiceConfigW(svc, qsc, cfg_bytes_needed, &cfg_bytes_needed)) {
+            config.start_type = qsc->dwStartType;
+            if (qsc->lpServiceStartName) {
+              config.account_name = qsc->lpServiceStartName;
+            }
+          }
+        }
+
+        DWORD desc_bytes = 0;
+        QueryServiceConfig2W(svc, SERVICE_CONFIG_DESCRIPTION, nullptr, 0, &desc_bytes);
+        if (desc_bytes > 0) {
+          std::vector<BYTE> desc_buf(desc_bytes);
+          if (QueryServiceConfig2W(svc, SERVICE_CONFIG_DESCRIPTION, desc_buf.data(),
+                                   desc_bytes, &desc_bytes)) {
+            auto* desc = reinterpret_cast<SERVICE_DESCRIPTIONW*>(desc_buf.data());
+            if (desc && desc->lpDescription) {
+              config.description = desc->lpDescription;
+            }
+          }
+        }
+
+        CloseServiceHandle(svc);
+      }
+
+      std::lock_guard<std::mutex> lock(config_cache_mutex_);
+      if (cache_revision == config_cache_revision_) {
+        config_cache_[item->service_name] = config;
+      }
+    }
+
+    item->start_type = config.start_type;
+    item->account_name = config.account_name;
+    item->description = config.description;
     result.push_back(std::move(item));
   }
 
   CloseServiceHandle(scm);
+
+  if (!cancelled) {
+    std::lock_guard<std::mutex> lock(config_cache_mutex_);
+    for (auto cached = config_cache_.begin(); cached != config_cache_.end();) {
+      if (active_service_names.find(cached->first) == active_service_names.end()) {
+        cached = config_cache_.erase(cached);
+      } else {
+        ++cached;
+      }
+    }
+  }
+
   return result;
 }
 
@@ -246,6 +302,9 @@ bool ServiceManagerService::ChangeStartupType(const std::wstring& service_name, 
           SERVICE_NO_CHANGE,
           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr)) {
     success = true;
+    std::lock_guard<std::mutex> lock(config_cache_mutex_);
+    ++config_cache_revision_;
+    config_cache_.erase(service_name);
   } else {
     if (error_msg) *error_msg = GetSystemErrorMessage(GetLastError());
   }
