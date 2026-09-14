@@ -79,7 +79,7 @@ ToastWindow::ToastWindow(
   wc.lpfnWndProc = WindowProc;
   wc.hInstance = instance;
   wc.hCursor = LoadCursorW(nullptr, IDC_HAND);
-  wc.lpszClassName = L"ProcessManagerToastWindow";
+  wc.lpszClassName = L"LiteProcManagerToastWindow";
 
   RegisterClassExW(&wc);
 
@@ -105,7 +105,7 @@ ToastWindow::ToastWindow(
 
   hwnd_ = CreateWindowExW(
       WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
-      wc.lpszClassName, L"ProcessManagerAlert",
+      wc.lpszClassName, L"LiteProcManagerAlert",
       WS_POPUP | WS_CLIPSIBLINGS,
       x, y, TOAST_WIDTH, TOAST_HEIGHT,
       nullptr, nullptr, instance, this);

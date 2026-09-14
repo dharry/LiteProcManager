@@ -684,7 +684,7 @@ TEST_CLASS(SettingsAndMonitorTests) {
 
   TEST_METHOD(JsonHelper_ParsingAndSerialization) {
     std::wstring sample_json = LR"({
-  "Name": "ProcessManager",
+  "Name": "LiteProcManager",
   "Version": 2,
   "Active": true,
   "Threshold": 85.5,
@@ -696,7 +696,7 @@ TEST_CLASS(SettingsAndMonitorTests) {
 
     JsonValue val = JsonValue::Parse(sample_json);
     Assert::IsTrue(val.is_object());
-    Assert::AreEqual(std::wstring(L"ProcessManager"), val[L"Name"].as_string());
+    Assert::AreEqual(std::wstring(L"LiteProcManager"), val[L"Name"].as_string());
     Assert::AreEqual(2, val[L"Version"].as_int());
     Assert::IsTrue(val[L"Active"].as_bool());
     Assert::AreEqual(85.5, val[L"Threshold"].as_double());
@@ -709,7 +709,7 @@ TEST_CLASS(SettingsAndMonitorTests) {
     std::wstring serialized = val.Serialize(2);
     JsonValue val2 = JsonValue::Parse(serialized);
     Assert::IsTrue(val2.is_object());
-    Assert::AreEqual(std::wstring(L"ProcessManager"), val2[L"Name"].as_string());
+    Assert::AreEqual(std::wstring(L"LiteProcManager"), val2[L"Name"].as_string());
     Assert::AreEqual(std::wstring(L"日本語テスト"), val2[L"Items"].as_array()[2].as_string());
   }
 

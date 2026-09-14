@@ -49,7 +49,7 @@ if %errorlevel% neq 0 (
 )
 
 :: 3. Stop running LiteProcManager instance if any (to avoid file lock)
-powershell -Command "Get-Process -Name 'LiteProcManager*','ProcessManager*' -ErrorAction SilentlyContinue | Stop-Process -Force" >nul 2>&1
+powershell -Command "Get-Process -Name 'LiteProcManager*' -ErrorAction SilentlyContinue | Stop-Process -Force" >nul 2>&1
 
 :: 4. Build Solution via MSBuild
 echo [*] Building LiteProcManager.sln [%CONFIG% ^| x64]...
@@ -81,13 +81,6 @@ if exist "!TEST_DLL!" (
         )
     ) else (
         echo [WARN] vstest.console.exe not found in PATH. Visual Studio Test Explorer can run this DLL directly.
-    )
-) else if exist "bin\%CONFIG%\ProcessManagerTests.exe" (
-    "bin\%CONFIG%\ProcessManagerTests.exe"
-    if !errorlevel! neq 0 (
-        echo.
-        echo [ERROR] Unit Tests FAILED!
-        exit /b !errorlevel!
     )
 ) else (
     echo [WARN] Test binary not found at !TEST_DLL!

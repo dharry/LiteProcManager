@@ -152,7 +152,7 @@ AppSettings::AppSettings() : columns(ProcessColumnInfo::GetDefaultColumns()) {}
 std::wstring AppSettings::GetAppDataDirectory() {
   wchar_t app_data[MAX_PATH];
   if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, 0, app_data))) {
-    std::wstring dir = std::wstring(app_data) + L"\\ProcessManager";
+    std::wstring dir = std::wstring(app_data) + L"\\LiteProcManager";
     CreateDirectoryW(dir.c_str(), nullptr);
     return dir;
   }

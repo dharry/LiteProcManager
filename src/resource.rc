@@ -803,7 +803,7 @@ BEGIN
     IDS_TRAY_MEMORY_LABEL          "Memory"
     IDS_ADMINISTRATOR_SUFFIX       " (Administrator)"
     IDS_MENU_ABOUT_VERSION_FORMAT  "Version: %s (&A)..."
-    IDS_ABOUT_DETAILS_FORMAT       "Version: %s\nArchitecture: x64 (Native C++)\nPrivilege: %s\n\nHigh-performance Windows process manager\nAuthor: Akifumi KISHI"
+    IDS_ABOUT_DETAILS_FORMAT       "Version: %s\nArchitecture: x64 (Native C++)\nPrivilege: %s\n\nHigh-performance Windows LiteProcManager\nAuthor: Akifumi KISHI"
     IDS_PRIVILEGE_ADMINISTRATOR    "Administrator"
     IDS_PRIVILEGE_STANDARD_USER    "Standard User"
     IDS_DEFAULT_MONITOR_RULE_NAME  "Monitor Rule"
