@@ -1006,21 +1006,57 @@ TEST_CLASS(LanguageManagerTests) {
   }
 
   TEST_METHOD(AutoStart_RegistryOperations) {
-    bool initial_state = AppSettings::IsAutoStartConfigured();
+    constexpr const wchar_t* kTestRootKey = L"Software\\LiteProcManager_UnitTest";
+    constexpr const wchar_t* kTestSubkey = L"Software\\LiteProcManager_UnitTest\\Run";
+    constexpr const wchar_t* kTestValueName = L"LiteProcManagerTest";
 
-    // Test enabling auto start
-    bool enable_res = AppSettings::SetAutoStart(true);
-    Assert::IsTrue(enable_res);
-    Assert::IsTrue(AppSettings::IsAutoStartConfigured());
+    struct RegistryCleanupGuard {
+      const wchar_t* root_key;
+      ~RegistryCleanupGuard() {
+        RegDeleteTreeW(HKEY_CURRENT_USER, root_key);
+      }
+    } cleanup{kTestRootKey};
 
-    // Test disabling auto start
-    bool disable_res = AppSettings::SetAutoStart(false);
-    Assert::IsTrue(disable_res);
-    Assert::IsFalse(AppSettings::IsAutoStartConfigured());
+    RegDeleteTreeW(HKEY_CURRENT_USER, kTestRootKey);
+    Assert::IsFalse(AppSettings::IsAutoStartConfigured(kTestSubkey, kTestValueName));
 
-    // Restore initial state
-    AppSettings::SetAutoStart(initial_state);
-    Assert::AreEqual(initial_state, AppSettings::IsAutoStartConfigured());
+    // Enabling auto start writes REG_SZ and reports configured
+    Assert::IsTrue(AppSettings::SetAutoStart(true, kTestSubkey, kTestValueName));
+    Assert::IsTrue(AppSettings::IsAutoStartConfigured(kTestSubkey, kTestValueName));
+
+    // Disabling auto start removes value
+    Assert::IsTrue(AppSettings::SetAutoStart(false, kTestSubkey, kTestValueName));
+    Assert::IsFalse(AppSettings::IsAutoStartConfigured(kTestSubkey, kTestValueName));
+
+    // Non-REG_SZ or empty REG_SZ values must be rejected (BUG-05)
+    HKEY hkey = nullptr;
+    Assert::AreEqual(
+        static_cast<LSTATUS>(ERROR_SUCCESS),
+        RegCreateKeyExW(HKEY_CURRENT_USER, kTestSubkey, 0, nullptr,
+                        REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr,
+                        &hkey, nullptr));
+    DWORD dword_val = 1;
+    Assert::AreEqual(
+        static_cast<LSTATUS>(ERROR_SUCCESS),
+        RegSetValueExW(hkey, kTestValueName, 0, REG_DWORD,
+                       reinterpret_cast<const BYTE*>(&dword_val),
+                       sizeof(dword_val)));
+    RegCloseKey(hkey);
+    Assert::IsFalse(AppSettings::IsAutoStartConfigured(kTestSubkey, kTestValueName));
+
+    Assert::AreEqual(
+        static_cast<LSTATUS>(ERROR_SUCCESS),
+        RegCreateKeyExW(HKEY_CURRENT_USER, kTestSubkey, 0, nullptr,
+                        REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr,
+                        &hkey, nullptr));
+    const wchar_t empty_str[] = L"";
+    Assert::AreEqual(
+        static_cast<LSTATUS>(ERROR_SUCCESS),
+        RegSetValueExW(hkey, kTestValueName, 0, REG_SZ,
+                       reinterpret_cast<const BYTE*>(empty_str),
+                       sizeof(empty_str)));
+    RegCloseKey(hkey);
+    Assert::IsFalse(AppSettings::IsAutoStartConfigured(kTestSubkey, kTestValueName));
   }
 
   TEST_METHOD(ServiceEnumeration_ShouldGrowBufferAndFollowResumeHandle) {
@@ -1559,6 +1595,40 @@ TEST_CLASS(AuditFixRegressionTests) {
                    self_item->dpi_awareness == L"System" ||
                    self_item->dpi_awareness == L"Per-Monitor");
     Assert::IsTrue(self_item->status == ProcessExecutionStatus::kRunning);
+  }
+
+  TEST_METHOD(ProcessSnapshot_CpuDeltaShouldIgnoreRecycledPid) {
+    ProcessSnapshotService::ProcessTimeTrack prev{};
+    prev.start_time = MakeFileTime(1000);
+    prev.kernel_time = 100;
+    prev.user_time = 200;
+    prev.working_set = 4096;
+
+    // 1. Same start_time -> delta is calculated accurately
+    ProcessSnapshotService::ProcessTimeTrack same_proc{};
+    same_proc.start_time = MakeFileTime(1000);
+    same_proc.kernel_time = 200;
+    same_proc.user_time = 300;
+    same_proc.working_set = 8192;
+
+    ProcessItem item_same;
+    ProcessSnapshotService::ApplyProcessMetricsDelta(&prev, same_proc, 1000, &item_same);
+    Assert::AreEqual(20.0, item_same.cpu_percent, 0.001);
+    Assert::AreEqual(4096LL, item_same.working_set_delta);
+
+    // 2. Different start_time (PID recycled) -> delta must reset to 0
+    ProcessSnapshotService::ProcessTimeTrack recycled_proc{};
+    recycled_proc.start_time = MakeFileTime(2000);
+    recycled_proc.kernel_time = 500;
+    recycled_proc.user_time = 500;
+    recycled_proc.working_set = 16384;
+
+    ProcessItem item_recycled;
+    item_recycled.cpu_percent = 99.0;
+    item_recycled.working_set_delta = 999;
+    ProcessSnapshotService::ApplyProcessMetricsDelta(&prev, recycled_proc, 1000, &item_recycled);
+    Assert::AreEqual(0.0, item_recycled.cpu_percent, 0.001);
+    Assert::AreEqual(0LL, item_recycled.working_set_delta);
   }
 };
 }  // namespace LiteProcManagerTests

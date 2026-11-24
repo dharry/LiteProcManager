@@ -68,16 +68,23 @@ class ProcessSnapshotService {
   bool TerminateProcessTree(
       const ProcessItem& root_process,
       const std::vector<std::shared_ptr<ProcessItem>>& all_items);
-  static bool SetPriority(const ProcessItem& process, ProcessPriorityClass priority);
-  static std::vector<std::shared_ptr<ProcessItem>> BuildProcessTree(const std::vector<std::shared_ptr<ProcessItem>>& flat_items);
-
- private:
   struct ProcessTimeTrack {
+    std::optional<FILETIME> start_time;
     int64_t kernel_time{0};
     int64_t user_time{0};
     uint64_t cycle_time{0};
     uint64_t working_set{0};
   };
+
+  static bool SetPriority(const ProcessItem& process, ProcessPriorityClass priority);
+  static std::vector<std::shared_ptr<ProcessItem>> BuildProcessTree(const std::vector<std::shared_ptr<ProcessItem>>& flat_items);
+  static void ApplyProcessMetricsDelta(
+      const ProcessTimeTrack* previous,
+      const ProcessTimeTrack& current,
+      uint64_t delta_sys_total,
+      ProcessItem* item);
+
+ private:
 
   struct ProcessStaticCache {
     std::optional<FILETIME> start_time;

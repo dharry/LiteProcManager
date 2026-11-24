@@ -1,12 +1,46 @@
 #include <windows.h>
 #include <commctrl.h>
 
+#include <iterator>
+
 #include "main_window.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 namespace {
 HANDLE g_single_instance_mutex = nullptr;
+
+bool IsSameExecutableWindow(HWND hwnd) {
+  DWORD window_pid = 0;
+  GetWindowThreadProcessId(hwnd, &window_pid);
+  if (window_pid == 0) {
+    return false;
+  }
+
+  wchar_t self_path[MAX_PATH * 2] = {0};
+  DWORD self_len = GetModuleFileNameW(
+      nullptr, self_path, static_cast<DWORD>(std::size(self_path)));
+  if (self_len == 0 || self_len >= std::size(self_path)) {
+    return false;
+  }
+
+  HANDLE process =
+      OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, window_pid);
+  if (!process) {
+    return false;
+  }
+
+  wchar_t target_path[MAX_PATH * 2] = {0};
+  DWORD target_len = static_cast<DWORD>(std::size(target_path));
+  BOOL queried =
+      QueryFullProcessImageNameW(process, 0, target_path, &target_len);
+  CloseHandle(process);
+  if (!queried) {
+    return false;
+  }
+
+  return _wcsicmp(self_path, target_path) == 0;
+}
 }  // namespace
 
 // Releases the single-instance lock before this process relaunches itself
@@ -36,9 +70,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, PWSTR /*pC
     if (mutex) {
       CloseHandle(mutex);
     }
-    // Activate and bring existing instance to foreground
+    // Activate and bring existing instance to foreground after verifying its image
     HWND existing_hwnd = FindWindowW(L"LiteProcManagerMainWindow", nullptr);
-    if (existing_hwnd) {
+    if (existing_hwnd && IsSameExecutableWindow(existing_hwnd)) {
       if (!IsWindowVisible(existing_hwnd) || IsIconic(existing_hwnd)) {
         ShowWindow(existing_hwnd, SW_SHOW);
         ShowWindow(existing_hwnd, SW_RESTORE);

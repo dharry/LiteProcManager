@@ -591,40 +591,64 @@ void AppSettings::Save() const {
 }
 
 bool AppSettings::IsAutoStartConfigured() {
-  HKEY hkey = nullptr;
-  if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-                    0, KEY_QUERY_VALUE, &hkey) != ERROR_SUCCESS) {
-    return false;
-  }
-  wchar_t path[MAX_PATH * 2] = {0};
-  DWORD size = sizeof(path);
-  DWORD type = 0;
-  LSTATUS status = RegQueryValueExW(hkey, L"LiteProcManager", nullptr, &type,
-                                    reinterpret_cast<LPBYTE>(path), &size);
-  RegCloseKey(hkey);
-  return (status == ERROR_SUCCESS);
+  return IsAutoStartConfigured(kAutoStartRegistrySubkey,
+                               kAutoStartRegistryValueName);
 }
 
 bool AppSettings::SetAutoStart(bool enable) {
+  return SetAutoStart(enable, kAutoStartRegistrySubkey,
+                      kAutoStartRegistryValueName);
+}
+
+bool AppSettings::IsAutoStartConfigured(const wchar_t* subkey,
+                                        const wchar_t* value_name) {
+  if (!subkey || !value_name) return false;
+
+  wchar_t path[MAX_PATH * 2] = {0};
+  DWORD size = sizeof(path);
+  LSTATUS status = RegGetValueW(
+      HKEY_CURRENT_USER, subkey, value_name, RRF_RT_REG_SZ, nullptr,
+      path, &size);
+  return (status == ERROR_SUCCESS && path[0] != L'\0');
+}
+
+bool AppSettings::SetAutoStart(bool enable, const wchar_t* subkey,
+                               const wchar_t* value_name) {
+  if (!subkey || !value_name) return false;
+
   HKEY hkey = nullptr;
-  if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-                    0, KEY_SET_VALUE, &hkey) != ERROR_SUCCESS) {
+  LSTATUS open_status = ERROR_SUCCESS;
+  if (enable) {
+    open_status = RegCreateKeyExW(
+        HKEY_CURRENT_USER, subkey, 0, nullptr, REG_OPTION_NON_VOLATILE,
+        KEY_SET_VALUE, nullptr, &hkey, nullptr);
+  } else {
+    open_status = RegOpenKeyExW(
+        HKEY_CURRENT_USER, subkey, 0, KEY_SET_VALUE, &hkey);
+    if (open_status == ERROR_FILE_NOT_FOUND) {
+      return true;
+    }
+  }
+  if (open_status != ERROR_SUCCESS) {
     return false;
   }
 
   LSTATUS status = ERROR_SUCCESS;
   if (enable) {
     wchar_t exe_path[MAX_PATH * 2] = {0};
-    if (GetModuleFileNameW(nullptr, exe_path, static_cast<DWORD>(std::size(exe_path))) > 0) {
+    DWORD len = GetModuleFileNameW(
+        nullptr, exe_path, static_cast<DWORD>(std::size(exe_path)));
+    if (len > 0 && len < std::size(exe_path)) {
       std::wstring cmd = L"\"" + std::wstring(exe_path) + L"\"";
-      status = RegSetValueExW(hkey, L"LiteProcManager", 0, REG_SZ,
-                              reinterpret_cast<const BYTE*>(cmd.c_str()),
-                              static_cast<DWORD>((cmd.length() + 1) * sizeof(wchar_t)));
+      status = RegSetValueExW(
+          hkey, value_name, 0, REG_SZ,
+          reinterpret_cast<const BYTE*>(cmd.c_str()),
+          static_cast<DWORD>((cmd.length() + 1) * sizeof(wchar_t)));
     } else {
       status = ERROR_FILE_NOT_FOUND;
     }
   } else {
-    status = RegDeleteValueW(hkey, L"LiteProcManager");
+    status = RegDeleteValueW(hkey, value_name);
     if (status == ERROR_FILE_NOT_FOUND) {
       status = ERROR_SUCCESS;
     }

@@ -2183,32 +2183,43 @@ void MainWindow::RestartAsAdministrator() {
   FlushPendingFilterSettingsSave();
 
   wchar_t exe_path[MAX_PATH] = {0};
-  if (GetModuleFileNameW(nullptr, exe_path, MAX_PATH) > 0) {
-    SHELLEXECUTEINFOW sei = {sizeof(SHELLEXECUTEINFOW)};
-    sei.lpVerb = L"runas";  // Prompt UAC elevation dialog
-    sei.lpFile = exe_path;
-    sei.hwnd = hwnd_;
-    sei.nShow = SW_SHOWNORMAL;
+  DWORD path_length = GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
+  if (path_length == 0 || path_length >= MAX_PATH) {
+    MessageBoxW(hwnd_, LanguageManager::GetString(StringId::kMsgRestartFailed),
+                LanguageManager::GetString(StringId::kTitleError),
+                MB_OK | MB_ICONERROR);
+    return;
+  }
 
-    // Release the single-instance lock first. The elevated child can start
-    // probing for it while this process is still tearing down; if the mutex
-    // is still held at that moment, the child sees "already running" and
-    // exits immediately without ever showing an elevated window.
-    ReleaseSingleInstanceLock();
+  SHELLEXECUTEINFOW sei = {sizeof(SHELLEXECUTEINFOW)};
+  sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+  sei.lpVerb = L"runas";  // Prompt UAC elevation dialog
+  sei.lpFile = exe_path;
+  sei.hwnd = hwnd_;
+  sei.nShow = SW_SHOWNORMAL;
 
-    if (ShellExecuteExW(&sei)) {
-      if (notify_icon_data_.cbSize > 0) {
-        Shell_NotifyIconW(NIM_DELETE, &notify_icon_data_);
-      }
-      ExitProcess(0);
+  // Release the single-instance lock first. The elevated child can start
+  // probing for it while this process is still tearing down; if the mutex
+  // is still held at that moment, the child sees "already running" and
+  // exits immediately without ever showing an elevated window.
+  ReleaseSingleInstanceLock();
+
+  if (ShellExecuteExW(&sei)) {
+    if (sei.hProcess != nullptr) {
+      CloseHandle(sei.hProcess);
     }
-    // Elevation was cancelled/denied (e.g. user clicked "No" on the UAC
-    // prompt) - this process keeps running, so re-acquire the lock rather
-    // than leaving the app unprotected against a duplicate launch.
-    HANDLE mutex = CreateMutexW(nullptr, TRUE, L"Local\\LiteProcManager_SingleInstance_Mutex");
-    if (mutex != nullptr) {
-      RestoreSingleInstanceLock(mutex);
-    }
+    // Use the regular shutdown path so timers, worker threads, tray icon,
+    // and owned resources are cleaned up before this process exits.
+    DestroyWindow(hwnd_);
+    return;
+  }
+
+  // Elevation was cancelled/denied (e.g. user clicked "No" on the UAC
+  // prompt) - this process keeps running, so re-acquire the lock rather
+  // than leaving the app unprotected against a duplicate launch.
+  HANDLE mutex = CreateMutexW(nullptr, TRUE, L"Local\\LiteProcManager_SingleInstance_Mutex");
+  if (mutex != nullptr) {
+    RestoreSingleInstanceLock(mutex);
   }
 }
 

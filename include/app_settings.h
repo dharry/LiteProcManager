@@ -61,8 +61,17 @@ class AppSettings {
   void SaveSettingsTo(const std::wstring& path) const;
   void SaveMonitorRulesTo(const std::wstring& path) const;
 
+  static constexpr const wchar_t* kAutoStartRegistrySubkey =
+      L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+  static constexpr const wchar_t* kAutoStartRegistryValueName =
+      L"LiteProcManager";
+
   static bool IsAutoStartConfigured();
   static bool SetAutoStart(bool enable);
+  static bool IsAutoStartConfigured(const wchar_t* subkey,
+                                    const wchar_t* value_name);
+  static bool SetAutoStart(bool enable, const wchar_t* subkey,
+                           const wchar_t* value_name);
 
   static std::wstring GetSettingsJsonPath();
   static std::wstring GetMonitorRulesJsonPath();

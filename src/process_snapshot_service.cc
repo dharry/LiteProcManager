@@ -310,24 +310,16 @@ SnapshotResult ProcessSnapshotService::GetSnapshot(const ProcessSnapshotOptions&
     int64_t raw_user_time = entry->UserTime.QuadPart;
     uint64_t raw_cycle_time = entry->CycleTime;
 
-    current_times[pid] = {raw_kernel_time, raw_user_time, raw_cycle_time, item->working_set};
+    ProcessTimeTrack current_track{
+        item->start_time, raw_kernel_time, raw_user_time, raw_cycle_time,
+        item->working_set};
+    current_times[pid] = current_track;
 
-    // Calculate CPU usage accurately against total system time
+    // Calculate CPU usage accurately against total system time (verifying start_time to prevent PID reuse artifacts)
     auto it_prev = previous_times_.find(pid);
-    if (it_prev != previous_times_.end()) {
-      int64_t delta_kernel = raw_kernel_time - it_prev->second.kernel_time;
-      int64_t delta_user = raw_user_time - it_prev->second.user_time;
-      int64_t total_proc_delta = delta_kernel + delta_user;
-
-      if (total_proc_delta > 0 && delta_sys_total > 0) {
-        double pct = (static_cast<double>(total_proc_delta) / static_cast<double>(delta_sys_total)) * 100.0;
-        item->cpu_percent = std::clamp(pct, 0.0, 100.0);
-      } else {
-        item->cpu_percent = 0.0;
-      }
-
-      item->working_set_delta = static_cast<int64_t>(item->working_set) - static_cast<int64_t>(it_prev->second.working_set);
-    }
+    ApplyProcessMetricsDelta(
+        (it_prev != previous_times_.end()) ? &it_prev->second : nullptr,
+        current_track, delta_sys_total, item.get());
 
     EnrichProcessDetails(item.get(), options);
 
@@ -556,20 +548,16 @@ void ProcessSnapshotService::EnrichProcessDetails(
         new_cache.uac_virtualization = ProcessPolicyStatus::kNotApplicable;
       }
 
-      // User Name
-      new_cache.user_name = QueryProcessUser(token_handle);
-      if (new_cache.user_name.empty() || new_cache.user_name == L"-") {
-        new_cache.user_name = L"SYSTEM";
+      // User Name (leave as "-" if unavailable rather than misreporting SYSTEM)
+      std::wstring queried_user = QueryProcessUser(token_handle);
+      if (!queried_user.empty()) {
+        new_cache.user_name = std::move(queried_user);
       }
 
       CloseHandle(token_handle);
-    } else {
-      new_cache.user_name = L"SYSTEM";
     }
 
     CloseHandle(process_handle);
-  } else {
-    new_cache.user_name = L"SYSTEM";
   }
 
   static_cache_[item->process_id] = new_cache;
@@ -684,6 +672,42 @@ std::wstring ProcessSnapshotService::QueryProcessDpiAwareness(HANDLE process_han
     default:
       return L"-";
   }
+}
+
+void ProcessSnapshotService::ApplyProcessMetricsDelta(
+    const ProcessTimeTrack* previous,
+    const ProcessTimeTrack& current,
+    uint64_t delta_sys_total,
+    ProcessItem* item) {
+  if (!item) return;
+
+  item->cpu_percent = 0.0;
+  item->working_set_delta = 0;
+  if (!previous) return;
+
+  // Reject delta calculation if PID was reused by a different process instance
+  if (previous->start_time.has_value() != current.start_time.has_value()) {
+    return;
+  }
+  if (previous->start_time.has_value() &&
+      CompareFileTime(&previous->start_time.value(),
+                      &current.start_time.value()) != 0) {
+    return;
+  }
+
+  int64_t delta_kernel = current.kernel_time - previous->kernel_time;
+  int64_t delta_user = current.user_time - previous->user_time;
+  int64_t total_proc_delta = delta_kernel + delta_user;
+
+  if (total_proc_delta > 0 && delta_sys_total > 0) {
+    double pct = (static_cast<double>(total_proc_delta) /
+                  static_cast<double>(delta_sys_total)) *
+                 100.0;
+    item->cpu_percent = std::clamp(pct, 0.0, 100.0);
+  }
+
+  item->working_set_delta = static_cast<int64_t>(current.working_set) -
+                            static_cast<int64_t>(previous->working_set);
 }
 
 bool ProcessSnapshotService::TerminateProcess(const ProcessItem& process) {
