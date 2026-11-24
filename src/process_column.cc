@@ -1,4 +1,4 @@
-﻿// Copyright 2026 LiteProcManager Authors. All rights reserved.
+// Copyright 2026 LiteProcManager Authors. All rights reserved.
 
 #include "language_manager.h"
 
@@ -37,16 +37,11 @@ std::vector<ProcessColumnInfo> ProcessColumnInfo::GetDefaultColumns() {
       {ProcessColumnId::kUacVirtualization, L"", 90, ColumnAlignment::kLeft, false, 28},
       {ProcessColumnId::kDescription, L"", 200, ColumnAlignment::kLeft, true, 29},
       {ProcessColumnId::kDepStatus, L"", 100, ColumnAlignment::kLeft, false, 30},
-      {ProcessColumnId::kEnterpriseContext, L"", 100, ColumnAlignment::kLeft, false, 31},
-      {ProcessColumnId::kDpiAwareness, L"", 110, ColumnAlignment::kLeft, false, 32},
-      {ProcessColumnId::kPackageName, L"", 180, ColumnAlignment::kLeft, false, 33},
-      {ProcessColumnId::kArchitecture, L"", 90, ColumnAlignment::kLeft, true, 34},
-      {ProcessColumnId::kGpuUsage, L"", 70, ColumnAlignment::kRight, false, 35},
-      {ProcessColumnId::kGpuEngine, L"", 90, ColumnAlignment::kLeft, false, 36},
-      {ProcessColumnId::kDedicatedGpuMemory, L"", 100, ColumnAlignment::kRight, false, 37},
-      {ProcessColumnId::kSharedGpuMemory, L"", 100, ColumnAlignment::kRight, false, 38},
-      {ProcessColumnId::kSessionId, L"", 80, ColumnAlignment::kRight, false, 39},
-      {ProcessColumnId::kCreateTime, L"", 140, ColumnAlignment::kLeft, false, 40},
+      {ProcessColumnId::kDpiAwareness, L"", 110, ColumnAlignment::kLeft, false, 31},
+      {ProcessColumnId::kPackageName, L"", 180, ColumnAlignment::kLeft, false, 32},
+      {ProcessColumnId::kArchitecture, L"", 90, ColumnAlignment::kLeft, true, 33},
+      {ProcessColumnId::kSessionId, L"", 80, ColumnAlignment::kRight, false, 34},
+      {ProcessColumnId::kCreateTime, L"", 140, ColumnAlignment::kLeft, false, 35},
   };
 
   for (auto& c : cols) {

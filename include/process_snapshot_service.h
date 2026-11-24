@@ -1,4 +1,4 @@
-﻿// Copyright 2026 LiteProcManager Authors. All rights reserved.
+// Copyright 2026 LiteProcManager Authors. All rights reserved.
 
 #ifndef LITE_PROC_MANAGER_PROCESS_SNAPSHOT_SERVICE_H_
 #define LITE_PROC_MANAGER_PROCESS_SNAPSHOT_SERVICE_H_
@@ -93,13 +93,15 @@ class ProcessSnapshotService {
         ProcessPolicyStatus::kNotApplicable};
     ProcessPolicyStatus dep_status{ProcessPolicyStatus::kEnabled};
     std::wstring enterprise_context{L"-"};
-    std::wstring dpi_awareness{L"Per-Monitor"};
+    std::wstring dpi_awareness{L"-"};
     std::wstring package_name{L"-"};
     ProcessPriorityClass priority{ProcessPriorityClass::kNormal};
   };
 
   void EnrichProcessDetails(ProcessItem* item, const ProcessSnapshotOptions& options);
   static std::wstring QueryProcessUser(HANDLE token_handle);
+  static std::wstring QueryProcessCommandLine(HANDLE process_handle);
+  static std::wstring QueryProcessDpiAwareness(HANDLE process_handle);
 
   PfnNtQuerySystemInformation pfn_nt_query_system_information_{nullptr};
   HMODULE ntdll_module_{nullptr};

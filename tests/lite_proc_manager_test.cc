@@ -448,32 +448,44 @@ TEST_CLASS(ProcessItemTests) {
 
 TEST_CLASS(SettingsAndMonitorTests) {
  public:
-  TEST_METHOD(Columns_ShouldHaveAll41Columns) {
+  TEST_METHOD(Columns_ShouldExposeOnlyImplementedColumns) {
     auto columns = ProcessColumnInfo::GetDefaultColumns();
-    Assert::AreEqual(41ULL, columns.size());
+    Assert::AreEqual(36ULL, columns.size());
 
-    bool found_name = false, found_pid = false, found_cpu = false, found_gpu = false;
+    bool found_name = false, found_pid = false, found_cpu = false;
+    bool found_cmd = false, found_dpi = false;
     bool found_priv_ws = false, found_peak_ws = false, found_io_read = false, found_elevated = false;
+    bool found_unimplemented = false;
 
     for (const auto& c : columns) {
       if (c.id == ProcessColumnId::kName) found_name = true;
       if (c.id == ProcessColumnId::kPid) found_pid = true;
       if (c.id == ProcessColumnId::kCpu) found_cpu = true;
-      if (c.id == ProcessColumnId::kGpuUsage) found_gpu = true;
+      if (c.id == ProcessColumnId::kCommandLine) found_cmd = true;
+      if (c.id == ProcessColumnId::kDpiAwareness) found_dpi = true;
       if (c.id == ProcessColumnId::kPrivateWorkingSet) found_priv_ws = true;
       if (c.id == ProcessColumnId::kPeakWorkingSet) found_peak_ws = true;
       if (c.id == ProcessColumnId::kIoReadCount) found_io_read = true;
       if (c.id == ProcessColumnId::kElevated) found_elevated = true;
+      if (c.id == ProcessColumnId::kGpuUsage ||
+          c.id == ProcessColumnId::kGpuEngine ||
+          c.id == ProcessColumnId::kDedicatedGpuMemory ||
+          c.id == ProcessColumnId::kSharedGpuMemory ||
+          c.id == ProcessColumnId::kEnterpriseContext) {
+        found_unimplemented = true;
+      }
     }
 
     Assert::IsTrue(found_name);
     Assert::IsTrue(found_pid);
     Assert::IsTrue(found_cpu);
-    Assert::IsTrue(found_gpu);
+    Assert::IsTrue(found_cmd);
+    Assert::IsTrue(found_dpi);
     Assert::IsTrue(found_priv_ws);
     Assert::IsTrue(found_peak_ws);
     Assert::IsTrue(found_io_read);
     Assert::IsTrue(found_elevated);
+    Assert::IsFalse(found_unimplemented);
   }
 
   TEST_METHOD(MonitorRule_ProcessMatching) {
@@ -1526,6 +1538,27 @@ TEST_CLASS(AuditFixRegressionTests) {
     // Remove r2 -> entry for r2 must be pruned
     service.SetRules({r1});
     Assert::AreEqual(1ULL, service.GetNotifiedCacheSize());
+  }
+
+  TEST_METHOD(ProcessSnapshot_ShouldPopulateCommandLineAndDpiForCurrentProcess) {
+    ProcessSnapshotService service;
+    auto result = service.GetSnapshot();
+    const uint32_t current_pid = GetCurrentProcessId();
+
+    std::shared_ptr<ProcessItem> self_item;
+    for (const auto& item : result.items) {
+      if (item && item->process_id == current_pid) {
+        self_item = item;
+        break;
+      }
+    }
+
+    Assert::IsTrue(self_item != nullptr);
+    Assert::IsFalse(self_item->command_line.empty());
+    Assert::IsTrue(self_item->dpi_awareness == L"Unaware" ||
+                   self_item->dpi_awareness == L"System" ||
+                   self_item->dpi_awareness == L"Per-Monitor");
+    Assert::IsTrue(self_item->status == ProcessExecutionStatus::kRunning);
   }
 };
 }  // namespace LiteProcManagerTests

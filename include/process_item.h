@@ -1,4 +1,4 @@
-﻿// Copyright 2026 LiteProcManager Authors. All rights reserved.
+// Copyright 2026 LiteProcManager Authors. All rights reserved.
 
 #ifndef LITE_PROC_MANAGER_PROCESS_ITEM_H_
 #define LITE_PROC_MANAGER_PROCESS_ITEM_H_
@@ -81,7 +81,7 @@ class ProcessItem {
   std::wstring description;
   ProcessPolicyStatus dep_status{ProcessPolicyStatus::kEnabled};
   std::wstring enterprise_context{L"-"};
-  std::wstring dpi_awareness{L"Per-Monitor"};
+  std::wstring dpi_awareness{L"-"};
   std::wstring package_name{L"-"};
   std::wstring architecture{L"x64"};
 

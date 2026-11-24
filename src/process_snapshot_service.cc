@@ -26,7 +26,11 @@ uint64_t FileTimeToUint64(const FILETIME& ft) {
 }
 
 using PfnGetPackageFullName = LONG(WINAPI*)(HANDLE hProcess, UINT32* packageFullNameLength, PWSTR packageFullName);
+using PfnGetProcessDpiAwareness = HRESULT(WINAPI*)(HANDLE hProcess, int* value);
+
 PfnGetPackageFullName pfn_get_package_full_name = nullptr;
+PfnNtQueryInformationProcess pfn_nt_query_information_process = nullptr;
+PfnGetProcessDpiAwareness pfn_get_process_dpi_awareness = nullptr;
 
 void InitOptionalApis() {
   HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
@@ -34,6 +38,51 @@ void InitOptionalApis() {
     pfn_get_package_full_name = reinterpret_cast<PfnGetPackageFullName>(
         GetProcAddress(kernel32, "GetPackageFullName"));
   }
+
+  HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+  if (ntdll) {
+    pfn_nt_query_information_process = reinterpret_cast<PfnNtQueryInformationProcess>(
+        GetProcAddress(ntdll, "NtQueryInformationProcess"));
+  }
+
+  HMODULE shcore = GetModuleHandleW(L"shcore.dll");
+  if (!shcore) {
+    shcore = LoadLibraryExW(L"shcore.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+  }
+  if (shcore) {
+    pfn_get_process_dpi_awareness = reinterpret_cast<PfnGetProcessDpiAwareness>(
+        GetProcAddress(shcore, "GetProcessDpiAwareness"));
+  }
+}
+
+bool AreAllThreadsSuspended(const SYSTEM_PROCESS_INFORMATION_DETAILED* entry,
+                            size_t available_bytes) {
+  if (!entry || entry->NumberOfThreads == 0) {
+    return false;
+  }
+
+  const size_t entry_limit =
+      (entry->NextEntryOffset > 0 && entry->NextEntryOffset < available_bytes)
+          ? static_cast<size_t>(entry->NextEntryOffset)
+          : available_bytes;
+  const size_t threads_offset = sizeof(SYSTEM_PROCESS_INFORMATION_DETAILED);
+  const size_t required_bytes =
+      threads_offset +
+      static_cast<size_t>(entry->NumberOfThreads) *
+          sizeof(SYSTEM_THREAD_INFORMATION_DETAILED);
+  if (required_bytes < threads_offset || required_bytes > entry_limit) {
+    return false;
+  }
+
+  const auto* threads = reinterpret_cast<const SYSTEM_THREAD_INFORMATION_DETAILED*>(
+      reinterpret_cast<const uint8_t*>(entry) + threads_offset);
+  for (ULONG i = 0; i < entry->NumberOfThreads; ++i) {
+    if (threads[i].ThreadState != kThreadStateWaiting ||
+        threads[i].WaitReason != kWaitReasonSuspended) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void EnableDebugPrivilege() {
@@ -211,12 +260,16 @@ SnapshotResult ProcessSnapshotService::GetSnapshot(const ProcessSnapshotOptions&
     item->process_id = pid;
     item->parent_process_id = parent_pid;
 
+    const size_t remaining_bytes =
+        (current_offset < buffer_size_) ? (buffer_size_ - current_offset) : 0;
     if (pid == 0) {
       item->name = L"System Idle Process";
       item->status = ProcessExecutionStatus::kRunning;
     } else if (entry->ImageName.Length > 0 && entry->ImageName.Buffer != nullptr) {
       item->name = std::wstring(entry->ImageName.Buffer, entry->ImageName.Length / sizeof(wchar_t));
-      item->status = ProcessExecutionStatus::kRunning;
+      item->status = (pid != 4 && AreAllThreadsSuspended(entry, remaining_bytes))
+                         ? ProcessExecutionStatus::kSuspended
+                         : ProcessExecutionStatus::kRunning;
     } else {
       item->name = L"System";
       item->status = ProcessExecutionStatus::kRunning;
@@ -394,12 +447,14 @@ void ProcessSnapshotService::EnrichProcessDetails(
 
   HANDLE process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, item->process_id);
   if (process_handle != nullptr) {
-    // 1. File Path
+    // 1. File Path & Command Line & DPI Awareness
     wchar_t path_buffer[MAX_PATH * 2] = {0};
     DWORD path_size = static_cast<DWORD>(std::size(path_buffer));
     if (QueryFullProcessImageNameW(process_handle, 0, path_buffer, &path_size)) {
       new_cache.file_path = path_buffer;
     }
+    new_cache.command_line = QueryProcessCommandLine(process_handle);
+    new_cache.dpi_awareness = QueryProcessDpiAwareness(process_handle);
 
     // 2. Priority
     if (options.query_priority) {
@@ -568,6 +623,67 @@ std::wstring ProcessSnapshotService::QueryProcessUser(HANDLE token_handle) {
   }
 
   return result;
+}
+
+std::wstring ProcessSnapshotService::QueryProcessCommandLine(HANDLE process_handle) {
+  if (!process_handle || !pfn_nt_query_information_process) {
+    return L"";
+  }
+
+  ULONG return_length = 0;
+  NTSTATUS status = pfn_nt_query_information_process(
+      process_handle, kProcessCommandLineInformation, nullptr, 0, &return_length);
+  if ((status != kStatusInfoLengthMismatch &&
+       status != kStatusBufferTooSmall &&
+       status != kStatusBufferOverflow) ||
+      return_length < sizeof(UNICODE_STRING) || return_length > 64 * 1024) {
+    return L"";
+  }
+
+  std::vector<BYTE> buffer(return_length);
+  status = pfn_nt_query_information_process(
+      process_handle, kProcessCommandLineInformation, buffer.data(),
+      static_cast<ULONG>(buffer.size()), &return_length);
+  if (status != kStatusSuccess) {
+    return L"";
+  }
+
+  const auto* cmd = reinterpret_cast<const UNICODE_STRING*>(buffer.data());
+  if (!cmd->Buffer || cmd->Length == 0) {
+    return L"";
+  }
+
+  const auto* buf_begin = buffer.data();
+  const auto* buf_end = buffer.data() + buffer.size();
+  const auto* str_begin = reinterpret_cast<const BYTE*>(cmd->Buffer);
+  if (str_begin < buf_begin || str_begin >= buf_end ||
+      cmd->Length > static_cast<size_t>(buf_end - str_begin)) {
+    return L"";
+  }
+
+  return std::wstring(cmd->Buffer, cmd->Length / sizeof(wchar_t));
+}
+
+std::wstring ProcessSnapshotService::QueryProcessDpiAwareness(HANDLE process_handle) {
+  if (!process_handle || !pfn_get_process_dpi_awareness) {
+    return L"-";
+  }
+
+  int awareness = -1;
+  if (FAILED(pfn_get_process_dpi_awareness(process_handle, &awareness))) {
+    return L"-";
+  }
+
+  switch (awareness) {
+    case 0:  // PROCESS_DPI_UNAWARE
+      return L"Unaware";
+    case 1:  // PROCESS_SYSTEM_DPI_AWARE
+      return L"System";
+    case 2:  // PROCESS_PER_MONITOR_DPI_AWARE
+      return L"Per-Monitor";
+    default:
+      return L"-";
+  }
 }
 
 bool ProcessSnapshotService::TerminateProcess(const ProcessItem& process) {

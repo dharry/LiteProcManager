@@ -1,4 +1,4 @@
-﻿// Copyright 2026 LiteProcManager Authors. All rights reserved.
+// Copyright 2026 LiteProcManager Authors. All rights reserved.
 
 #ifndef LITE_PROC_MANAGER_NATIVE_TYPES_H_
 #define LITE_PROC_MANAGER_NATIVE_TYPES_H_
@@ -29,10 +29,15 @@ enum class ProcessPriorityClass : uint32_t {
   kRealtime = REALTIME_PRIORITY_CLASS,
 };
 
-// NT Query System Information structures
+// NT Query System / Process Information structures
 constexpr ULONG kSystemProcessInformation = 5;
+constexpr ULONG kProcessCommandLineInformation = 60;
 constexpr NTSTATUS kStatusInfoLengthMismatch = 0xC0000004L;
+constexpr NTSTATUS kStatusBufferTooSmall = 0xC0000023L;
+constexpr NTSTATUS kStatusBufferOverflow = 0x80000005L;
 constexpr NTSTATUS kStatusSuccess = 0x00000000L;
+constexpr ULONG kThreadStateWaiting = 5;
+constexpr ULONG kWaitReasonSuspended = 5;
 
 #pragma pack(push, 8)
 struct SYSTEM_PROCESS_INFORMATION_DETAILED {
@@ -73,10 +78,33 @@ struct SYSTEM_PROCESS_INFORMATION_DETAILED {
 };
 #pragma pack(pop)
 
+#pragma pack(push, 8)
+struct SYSTEM_THREAD_INFORMATION_DETAILED {
+  LARGE_INTEGER KernelTime;
+  LARGE_INTEGER UserTime;
+  LARGE_INTEGER CreateTime;
+  ULONG WaitTime;
+  PVOID StartAddress;
+  CLIENT_ID ClientId;
+  KPRIORITY Priority;
+  LONG BasePriority;
+  ULONG ContextSwitches;
+  ULONG ThreadState;
+  ULONG WaitReason;
+};
+#pragma pack(pop)
+
 typedef NTSTATUS(NTAPI* PfnNtQuerySystemInformation)(
     ULONG SystemInformationClass,
     PVOID SystemInformation,
     ULONG SystemInformationLength,
+    PULONG ReturnLength);
+
+typedef NTSTATUS(NTAPI* PfnNtQueryInformationProcess)(
+    HANDLE ProcessHandle,
+    ULONG ProcessInformationClass,
+    PVOID ProcessInformation,
+    ULONG ProcessInformationLength,
     PULONG ReturnLength);
 
 }  // namespace lite_proc_manager
