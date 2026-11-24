@@ -62,7 +62,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <CETCompat>true</CETCompat>
-      <AdditionalDependencies>comctl32.lib;comdlg32.lib;dwmapi.lib;uxtheme.lib;shell32.lib;version.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>comctl32.lib;comdlg32.lib;dwmapi.lib;uxtheme.lib;shell32.lib;version.lib;advapi32.lib;iphlpapi.lib;powrprof.lib;ws2_32.lib;msimg32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -87,7 +87,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <CETCompat>true</CETCompat>
-      <AdditionalDependencies>comctl32.lib;comdlg32.lib;dwmapi.lib;uxtheme.lib;shell32.lib;version.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>comctl32.lib;comdlg32.lib;dwmapi.lib;uxtheme.lib;shell32.lib;version.lib;advapi32.lib;iphlpapi.lib;powrprof.lib;ws2_32.lib;msimg32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -102,6 +102,13 @@
     <ClInclude Include="..\include\monitor_service.h" />
     <ClInclude Include="..\include\native_types.h" />
     <ClInclude Include="..\include\options_dialog.h" />
+    <ClInclude Include="..\include\cpu_performance_collector.h" />
+    <ClInclude Include="..\include\memory_network_collector.h" />
+    <ClInclude Include="..\include\performance_data_service.h" />
+    <ClInclude Include="..\include\performance_formatter.h" />
+    <ClInclude Include="..\include\performance_graph_renderer.h" />
+    <ClInclude Include="..\include\performance_types.h" />
+    <ClInclude Include="..\include\performance_view.h" />
     <ClInclude Include="..\include\process_column.h" />
     <ClInclude Include="..\include\process_export.h" />
     <ClInclude Include="..\include\process_item.h" />
@@ -128,6 +135,12 @@
     <ClCompile Include="monitor_rule.cc" />
     <ClCompile Include="monitor_service.cc" />
     <ClCompile Include="options_dialog.cc" />
+    <ClCompile Include="cpu_performance_collector.cc" />
+    <ClCompile Include="memory_network_collector.cc" />
+    <ClCompile Include="performance_data_service.cc" />
+    <ClCompile Include="performance_formatter.cc" />
+    <ClCompile Include="performance_graph_renderer.cc" />
+    <ClCompile Include="performance_view.cc" />
     <ClCompile Include="process_column.cc" />
     <ClCompile Include="process_export.cc" />
     <ClCompile Include="process_item.cc" />

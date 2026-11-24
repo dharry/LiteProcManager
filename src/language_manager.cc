@@ -336,6 +336,48 @@ UINT StringIdToResourceId(StringId id) {
     case StringId::kSystemErrorCodePrefix: return IDS_SYSTEM_ERROR_CODE_PREFIX;
     case StringId::kTrayMemoryLabel: return IDS_TRAY_MEMORY_LABEL;
     case StringId::kDefaultMonitorRuleName: return IDS_DEFAULT_MONITOR_RULE_NAME;
+
+    // Performance Tab
+    case StringId::kTabPerformance: return IDS_TAB_PERFORMANCE;
+    case StringId::kPerfCpuTitle: return IDS_PERF_CPU_TITLE;
+    case StringId::kPerfMemoryTitle: return IDS_PERF_MEMORY_TITLE;
+    case StringId::kPerfNetworkFallback: return IDS_PERF_NETWORK_FALLBACK;
+    case StringId::kPerfUtilization: return IDS_PERF_UTILIZATION;
+    case StringId::kPerfSpeed: return IDS_PERF_SPEED;
+    case StringId::kPerfProcesses: return IDS_PERF_PROCESSES;
+    case StringId::kPerfThreads: return IDS_PERF_THREADS;
+    case StringId::kPerfHandles: return IDS_PERF_HANDLES;
+    case StringId::kPerfUptime: return IDS_PERF_UPTIME;
+    case StringId::kPerfBaseSpeed: return IDS_PERF_BASE_SPEED;
+    case StringId::kPerfSockets: return IDS_PERF_SOCKETS;
+    case StringId::kPerfCores: return IDS_PERF_CORES;
+    case StringId::kPerfLogicalProcessors: return IDS_PERF_LOGICAL_PROCESSORS;
+    case StringId::kPerfVirtualMachine: return IDS_PERF_VIRTUAL_MACHINE;
+    case StringId::kPerfL1Cache: return IDS_PERF_L1_CACHE;
+    case StringId::kPerfL2Cache: return IDS_PERF_L2_CACHE;
+    case StringId::kPerfL3Cache: return IDS_PERF_L3_CACHE;
+    case StringId::kPerfGraph60sCpuPct: return IDS_PERF_GRAPH_60S_CPU_PCT;
+    case StringId::kPerfGraph60sMem: return IDS_PERF_GRAPH_60S_MEM;
+    case StringId::kPerfGraph60sNet: return IDS_PERF_GRAPH_60S_NET;
+    case StringId::kPerfMemoryComposition: return IDS_PERF_MEMORY_COMPOSITION;
+    case StringId::kPerfInUse: return IDS_PERF_IN_USE;
+    case StringId::kPerfAvailable: return IDS_PERF_AVAILABLE;
+    case StringId::kPerfCommitted: return IDS_PERF_COMMITTED;
+    case StringId::kPerfCached: return IDS_PERF_CACHED;
+    case StringId::kPerfPagedPool: return IDS_PERF_PAGED_POOL;
+    case StringId::kPerfNonPagedPool: return IDS_PERF_NON_PAGED_POOL;
+    case StringId::kPerfTotalPhysical: return IDS_PERF_TOTAL_PHYSICAL;
+    case StringId::kPerfSend: return IDS_PERF_SEND;
+    case StringId::kPerfReceive: return IDS_PERF_RECEIVE;
+    case StringId::kPerfAdapterName: return IDS_PERF_ADAPTER_NAME;
+    case StringId::kPerfConnectionType: return IDS_PERF_CONNECTION_TYPE;
+    case StringId::kPerfIpv4Address: return IDS_PERF_IPV4_ADDRESS;
+    case StringId::kPerfIpv6Address: return IDS_PERF_IPV6_ADDRESS;
+    case StringId::kPerfLinkSpeed: return IDS_PERF_LINK_SPEED;
+    case StringId::kPerfMenuGraphLogical: return IDS_PERF_MENU_GRAPH_LOGICAL;
+    case StringId::kPerfMenuGraphOverall: return IDS_PERF_MENU_GRAPH_OVERALL;
+    case StringId::kPerfNoNetworkAdapters: return IDS_PERF_NO_NETWORK_ADAPTERS;
+    case StringId::kSearchPlaceholderService: return IDS_SEARCH_PLACEHOLDER_SERVICE;
   }
   return 0;
 }

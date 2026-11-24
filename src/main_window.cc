@@ -292,15 +292,19 @@ bool IsSearchPlaceholderOrEmpty(const std::wstring& text) {
   size_t last = text.find_last_not_of(L" \t\r\n");
   std::wstring trimmed = text.substr(first, (last - first + 1));
 
-  std::wstring cur_ph = LanguageManager::GetString(StringId::kSearchPlaceholder);
-  size_t placeholder_first = cur_ph.find_first_not_of(L" \t\r\n");
-  size_t placeholder_last = cur_ph.find_last_not_of(L" \t\r\n");
-  std::wstring trimmed_placeholder =
-      placeholder_first == std::wstring::npos
-          ? std::wstring()
-          : cur_ph.substr(placeholder_first,
-                          placeholder_last - placeholder_first + 1);
-  return text == cur_ph || trimmed == trimmed_placeholder;
+  auto matches_placeholder = [&](StringId id) {
+    std::wstring cur_ph = LanguageManager::GetString(id);
+    size_t placeholder_first = cur_ph.find_first_not_of(L" \t\r\n");
+    size_t placeholder_last = cur_ph.find_last_not_of(L" \t\r\n");
+    std::wstring trimmed_placeholder =
+        placeholder_first == std::wstring::npos
+            ? std::wstring()
+            : cur_ph.substr(placeholder_first,
+                            placeholder_last - placeholder_first + 1);
+    return text == cur_ph || trimmed == trimmed_placeholder;
+  };
+  return matches_placeholder(StringId::kSearchPlaceholder) ||
+         matches_placeholder(StringId::kSearchPlaceholderService);
 }
 
 constexpr UINT_PTR kStatusBarSubclassId = 0x9002;
@@ -471,7 +475,7 @@ LRESULT CALLBACK SearchEditSubclassProc(
 
   if (msg == WM_PAINT) {
     LRESULT result = DefSubclassProc(hwnd, msg, wparam, lparam);
-    if (self && GetWindowTextLengthW(hwnd) == 0) {
+    if (self && GetWindowTextLengthW(hwnd) == 0 && IsWindowEnabled(hwnd)) {
       HDC hdc = GetDC(hwnd);
       if (hdc) {
         RECT text_rect{};
@@ -490,8 +494,12 @@ LRESULT CALLBACK SearchEditSubclassProc(
         HFONT old_font = static_cast<HFONT>(SelectObject(hdc, font));
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, palette.placeholder_text);
+        const StringId placeholder_id =
+            (self->GetCurrentTab() == MainTab::kServices)
+                ? StringId::kSearchPlaceholderService
+                : StringId::kSearchPlaceholder;
         DrawTextW(hdc,
-                  LanguageManager::GetString(StringId::kSearchPlaceholder),
+                  LanguageManager::GetString(placeholder_id),
                   -1, &text_rect,
                   DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS |
                       DT_NOPREFIX);
@@ -769,6 +777,7 @@ bool MainWindow::Create(HINSTANCE instance, int cmd_show) {
   UpdateWindow(hwnd_);
 
   UpdateTimerInterval();
+  SampleAndUpdatePerformanceView();
   RefreshData();
 
   return true;
@@ -815,7 +824,7 @@ int MainWindow::RunMessageLoop() {
             ListView_SetItemState(service_list_view_, -1, LVIS_SELECTED, LVIS_SELECTED);
             continue;
           }
-        } else {
+        } else if (current_tab_ == MainTab::kProcesses) {
           if (focus == listview_hwnd_ || (focus != search_edit_ && settings_.display_mode == ViewDisplayMode::kFlatList)) {
             ListView_SetItemState(listview_hwnd_, -1, LVIS_SELECTED, LVIS_SELECTED);
             continue;
@@ -823,7 +832,7 @@ int MainWindow::RunMessageLoop() {
         }
       } else if ((msg.wParam == 'F' || msg.wParam == 'f') && (GetKeyState(VK_CONTROL) & 0x8000)) {
         // Ctrl+F: Focus the quick filter search box
-        if (search_edit_ && IsWindowVisible(search_edit_)) {
+        if (search_edit_ && IsWindowVisible(search_edit_) && IsWindowEnabled(search_edit_)) {
           SetFocus(search_edit_);
           SendMessageW(search_edit_, EM_SETSEL, 0, -1);
           continue;
@@ -841,6 +850,8 @@ int MainWindow::RunMessageLoop() {
             OnTabChanged();
             if (current_tab_ == MainTab::kProcesses) {
               SetFocus(settings_.display_mode == ViewDisplayMode::kProcessTree ? treeview_hwnd_ : listview_hwnd_);
+            } else if (current_tab_ == MainTab::kPerformance && performance_view_.Hwnd()) {
+              SetFocus(performance_view_.Hwnd());
             } else if (current_tab_ == MainTab::kServices && service_list_view_) {
               SetFocus(service_list_view_);
             }
@@ -1003,11 +1014,15 @@ void MainWindow::InitializeComponents() {
   tie.mask = TCIF_TEXT;
   std::wstring tab_proc = LanguageManager::GetString(StringId::kTabProcesses);
   tie.pszText = const_cast<LPWSTR>(tab_proc.c_str());
-  TabCtrl_InsertItem(tab_control_, 0, &tie);
+  TabCtrl_InsertItem(tab_control_, static_cast<int>(MainTab::kProcesses), &tie);
+
+  std::wstring tab_perf = LanguageManager::GetString(StringId::kTabPerformance);
+  tie.pszText = const_cast<LPWSTR>(tab_perf.c_str());
+  TabCtrl_InsertItem(tab_control_, static_cast<int>(MainTab::kPerformance), &tie);
 
   std::wstring tab_svc = LanguageManager::GetString(StringId::kTabServices);
   tie.pszText = const_cast<LPWSTR>(tab_svc.c_str());
-  TabCtrl_InsertItem(tab_control_, 1, &tie);
+  TabCtrl_InsertItem(tab_control_, static_cast<int>(MainTab::kServices), &tie);
   SetWindowSubclass(tab_control_, TabControlSubclassProc,
                     kTabControlSubclassId,
                     reinterpret_cast<DWORD_PTR>(this));
@@ -1023,6 +1038,12 @@ void MainWindow::InitializeComponents() {
       LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_HEADERDRAGDROP | LVS_EX_DOUBLEBUFFER);
   SetWindowSubclass(service_list_view_, ListViewSubclassProc, kListViewSubclassId, reinterpret_cast<DWORD_PTR>(this));
   RebuildServiceListViewColumns();
+
+  // 3d. Performance View
+  performance_view_.Create(hwnd_, instance_, IDC_PERFORMANCE_VIEW);
+  if (performance_view_.Hwnd()) {
+    ShowWindow(performance_view_.Hwnd(), SW_HIDE);
+  }
 
   // 4. StatusBar
   statusbar_hwnd_ = CreateWindowExW(
@@ -1209,6 +1230,11 @@ void MainWindow::UpdateTimerInterval() {
 }
 
 void MainWindow::RefreshData() {
+  if (current_tab_ == MainTab::kPerformance) {
+    SampleAndUpdatePerformanceView();
+    UpdateStatusLabels();
+    return;
+  }
   if (current_tab_ == MainTab::kServices) {
     RefreshServicesData();
     return;
@@ -1305,6 +1331,72 @@ void MainWindow::OnFilterConditionChanged() {
 
 void MainWindow::UpdateStatusLabels() {
   wchar_t buf[128];
+
+  if (current_tab_ == MainTab::kPerformance) {
+    const auto& snap = performance_data_service_.GetSnapshot();
+    const uint32_t proc_count = (snap.cpu.process_count > 0)
+        ? snap.cpu.process_count
+        : static_cast<uint32_t>(totals_.total_processes);
+    const uint32_t thread_count = (snap.cpu.thread_count > 0)
+        ? snap.cpu.thread_count
+        : totals_.total_threads;
+    const uint32_t handle_count = (snap.cpu.handle_count > 0)
+        ? snap.cpu.handle_count
+        : totals_.total_handles;
+    const double cpu_pct = (snap.memory.total_physical_bytes > 0)
+        ? snap.cpu.overall_usage_percent
+        : totals_.total_cpu_usage;
+    const uint64_t total_phys = (snap.memory.total_physical_bytes > 0)
+        ? snap.memory.total_physical_bytes
+        : totals_.total_physical_memory;
+    const uint64_t used_phys = (snap.memory.total_physical_bytes > 0)
+        ? snap.memory.in_use_bytes
+        : totals_.used_physical_memory;
+    const uint64_t commit_limit = (snap.memory.commit_limit_bytes > 0)
+        ? snap.memory.commit_limit_bytes
+        : totals_.total_commit_limit;
+    const uint64_t committed = (snap.memory.commit_limit_bytes > 0)
+        ? snap.memory.committed_bytes
+        : totals_.total_committed;
+
+    totals_.total_processes = static_cast<int>(proc_count);
+    totals_.total_threads = thread_count;
+    totals_.total_handles = handle_count;
+    totals_.total_cpu_usage = cpu_pct;
+    totals_.total_physical_memory = total_phys;
+    totals_.used_physical_memory = used_phys;
+    totals_.total_commit_limit = commit_limit;
+    totals_.total_committed = committed;
+
+    swprintf_s(buf, LanguageManager::GetString(StringId::kStatusProcesses), proc_count);
+    SendMessageW(statusbar_hwnd_, SB_SETTEXTW, 0, reinterpret_cast<LPARAM>(buf));
+
+    swprintf_s(buf, LanguageManager::GetString(StringId::kStatusThreads), thread_count);
+    SendMessageW(statusbar_hwnd_, SB_SETTEXTW, 1, reinterpret_cast<LPARAM>(buf));
+
+    swprintf_s(buf, LanguageManager::GetString(StringId::kStatusHandles), handle_count);
+    SendMessageW(statusbar_hwnd_, SB_SETTEXTW, 2, reinterpret_cast<LPARAM>(buf));
+
+    swprintf_s(buf, LanguageManager::GetString(StringId::kStatusCpu), cpu_pct);
+    SendMessageW(statusbar_hwnd_, SB_SETTEXTW, 3, reinterpret_cast<LPARAM>(buf));
+
+    if (total_phys > 0) {
+      double used_gb = static_cast<double>(used_phys) / (1024.0 * 1024 * 1024);
+      double total_gb = static_cast<double>(total_phys) / (1024.0 * 1024 * 1024);
+      int percent = static_cast<int>((used_phys * 100) / total_phys);
+      swprintf_s(buf, LanguageManager::GetString(StringId::kStatusMemory), used_gb, total_gb, percent);
+      SendMessageW(statusbar_hwnd_, SB_SETTEXTW, 4, reinterpret_cast<LPARAM>(buf));
+    }
+
+    if (commit_limit > 0) {
+      double commit_gb = static_cast<double>(committed) / (1024.0 * 1024 * 1024);
+      double limit_gb = static_cast<double>(commit_limit) / (1024.0 * 1024 * 1024);
+      swprintf_s(buf, LanguageManager::GetString(StringId::kStatusCommit), commit_gb, limit_gb);
+      SendMessageW(statusbar_hwnd_, SB_SETTEXTW, 5, reinterpret_cast<LPARAM>(buf));
+    }
+    UpdateTrayTooltip();
+    return;
+  }
 
   if (current_tab_ == MainTab::kServices) {
     DWORD running_count = 0;
@@ -2099,6 +2191,7 @@ void MainWindow::ApplyTheme() {
   apply_control_theme(filter_clear_btn_);
   apply_control_theme(tab_control_);
   apply_control_theme(service_list_view_);
+  performance_view_.SetTheme(settings_.theme);
   apply_control_theme(tooltip_hwnd_);
   apply_control_theme(btn_tree_);
   apply_control_theme(btn_columns_);
@@ -2692,12 +2785,18 @@ void MainWindow::UpdateLanguageAndUI() {
     tie.mask = TCIF_TEXT;
     std::wstring tab_proc = LanguageManager::GetString(StringId::kTabProcesses);
     tie.pszText = const_cast<LPWSTR>(tab_proc.c_str());
-    TabCtrl_SetItem(tab_control_, 0, &tie);
+    TabCtrl_SetItem(tab_control_, static_cast<int>(MainTab::kProcesses), &tie);
+
+    std::wstring tab_perf = LanguageManager::GetString(StringId::kTabPerformance);
+    tie.pszText = const_cast<LPWSTR>(tab_perf.c_str());
+    TabCtrl_SetItem(tab_control_, static_cast<int>(MainTab::kPerformance), &tie);
 
     std::wstring tab_svc = LanguageManager::GetString(StringId::kTabServices);
     tie.pszText = const_cast<LPWSTR>(tab_svc.c_str());
-    TabCtrl_SetItem(tab_control_, 1, &tie);
+    TabCtrl_SetItem(tab_control_, static_cast<int>(MainTab::kServices), &tie);
   }
+  performance_view_.SetFonts(ui_font_, settings_.ui_font_name);
+  performance_view_.SetStrings(BuildPerformanceStrings());
 
   // Re-build columns text
   for (auto& col : settings_.columns) {
@@ -2707,6 +2806,7 @@ void MainWindow::UpdateLanguageAndUI() {
   if (service_list_view_) {
     RebuildServiceListViewColumns();
   }
+  UpdateTabControlStates();
   RefreshData();
   InvalidateRect(hwnd_, nullptr, TRUE);
 }
@@ -2778,12 +2878,33 @@ void MainWindow::ResizeChildren(int width, int height) {
     SetWindowPos(treeview_hwnd_, nullptr, 0, top_y, width, content_height, SWP_NOZORDER);
 
     if (service_list_view_) ShowWindow(service_list_view_, SW_HIDE);
+    if (performance_view_.Hwnd()) ShowWindow(performance_view_.Hwnd(), SW_HIDE);
     if (settings_.display_mode == ViewDisplayMode::kProcessTree) {
       ShowWindow(listview_hwnd_, SW_HIDE);
       ShowWindow(treeview_hwnd_, SW_SHOW);
     } else {
       ShowWindow(listview_hwnd_, SW_SHOW);
       ShowWindow(treeview_hwnd_, SW_HIDE);
+    }
+  } else if (current_tab_ == MainTab::kPerformance) {
+    // Performance Tab: Hide condition filter controls
+    if (filter_col_combo_) ShowWindow(filter_col_combo_, SW_HIDE);
+    if (filter_op_combo_) ShowWindow(filter_op_combo_, SW_HIDE);
+    if (filter_val_edit_) ShowWindow(filter_val_edit_, SW_HIDE);
+    if (filter_clear_btn_) ShowWindow(filter_clear_btn_, SW_HIDE);
+
+    // Hide process list/tree and service list
+    ShowWindow(listview_hwnd_, SW_HIDE);
+    ShowWindow(treeview_hwnd_, SW_HIDE);
+    if (service_list_view_) ShowWindow(service_list_view_, SW_HIDE);
+
+    int top_y = 62;
+    int content_height = height - top_y - sb_height;
+    if (content_height < 0) content_height = 0;
+
+    if (performance_view_.Hwnd()) {
+      SetWindowPos(performance_view_.Hwnd(), nullptr, 0, top_y, width, content_height, SWP_NOZORDER);
+      ShowWindow(performance_view_.Hwnd(), SW_SHOW);
     }
   } else {
     // Services Tab: Hide condition filter controls
@@ -2792,9 +2913,10 @@ void MainWindow::ResizeChildren(int width, int height) {
     if (filter_val_edit_) ShowWindow(filter_val_edit_, SW_HIDE);
     if (filter_clear_btn_) ShowWindow(filter_clear_btn_, SW_HIDE);
 
-    // Hide process list/tree
+    // Hide process list/tree and performance view
     ShowWindow(listview_hwnd_, SW_HIDE);
     ShowWindow(treeview_hwnd_, SW_HIDE);
+    if (performance_view_.Hwnd()) ShowWindow(performance_view_.Hwnd(), SW_HIDE);
 
     int top_y = 62;
     int content_height = height - top_y - sb_height;
@@ -2813,15 +2935,25 @@ void MainWindow::OnTabChanged() {
   KillTimer(hwnd_, IDT_SEARCH_DEBOUNCE_TIMER);
 
   int sel = TabCtrl_GetCurSel(tab_control_);
-  current_tab_ = (sel == 1) ? MainTab::kServices : MainTab::kProcesses;
+  if (sel == static_cast<int>(MainTab::kPerformance)) {
+    current_tab_ = MainTab::kPerformance;
+  } else if (sel == static_cast<int>(MainTab::kServices)) {
+    current_tab_ = MainTab::kServices;
+  } else {
+    current_tab_ = MainTab::kProcesses;
+  }
   InvalidateRect(tab_control_, nullptr, FALSE);
 
   RECT rc;
   GetClientRect(hwnd_, &rc);
   ResizeChildren(rc.right, rc.bottom);
+  UpdateTabControlStates();
 
   if (current_tab_ == MainTab::kProcesses) {
     ApplyFilterAndDisplay();
+    UpdateStatusLabels();
+  } else if (current_tab_ == MainTab::kPerformance) {
+    performance_view_.UpdateSnapshot(performance_data_service_.GetSnapshot());
     UpdateStatusLabels();
   } else {
     if (all_services_.empty()) {
@@ -2831,6 +2963,80 @@ void MainWindow::OnTabChanged() {
       UpdateStatusLabels();
     }
   }
+}
+
+void MainWindow::UpdateTabControlStates() {
+  const bool is_processes_tab = (current_tab_ == MainTab::kProcesses);
+  const bool is_search_enabled = (current_tab_ != MainTab::kPerformance);
+  if (search_edit_) {
+    EnableWindow(search_edit_, is_search_enabled ? TRUE : FALSE);
+    InvalidateRect(search_edit_, nullptr, TRUE);
+  }
+  if (btn_tree_) {
+    EnableWindow(btn_tree_, is_processes_tab ? TRUE : FALSE);
+  }
+  if (btn_columns_) {
+    EnableWindow(btn_columns_, is_processes_tab ? TRUE : FALSE);
+  }
+  if (btn_endtask_) {
+    EnableWindow(btn_endtask_, is_processes_tab ? TRUE : FALSE);
+  }
+  HMENU main_menu = GetMenu(hwnd_);
+  if (main_menu) {
+    EnableMenuItem(main_menu, IDM_SELECT_COLUMNS,
+                   MF_BYCOMMAND | (is_processes_tab ? MF_ENABLED : MF_GRAYED));
+  }
+}
+
+void MainWindow::SampleAndUpdatePerformanceView() {
+  const auto& snapshot = performance_data_service_.Sample();
+  performance_view_.UpdateSnapshot(snapshot);
+}
+
+PerformanceStrings MainWindow::BuildPerformanceStrings() const {
+  PerformanceStrings s;
+  s.cpu_title = LanguageManager::GetString(StringId::kPerfCpuTitle);
+  s.memory_title = LanguageManager::GetString(StringId::kPerfMemoryTitle);
+  s.network_fallback_title = LanguageManager::GetString(StringId::kPerfNetworkFallback);
+  s.utilization = LanguageManager::GetString(StringId::kPerfUtilization);
+  s.speed = LanguageManager::GetString(StringId::kPerfSpeed);
+  s.processes = LanguageManager::GetString(StringId::kPerfProcesses);
+  s.threads = LanguageManager::GetString(StringId::kPerfThreads);
+  s.handles = LanguageManager::GetString(StringId::kPerfHandles);
+  s.uptime = LanguageManager::GetString(StringId::kPerfUptime);
+  s.base_speed = LanguageManager::GetString(StringId::kPerfBaseSpeed);
+  s.sockets = LanguageManager::GetString(StringId::kPerfSockets);
+  s.cores = LanguageManager::GetString(StringId::kPerfCores);
+  s.logical_processors = LanguageManager::GetString(StringId::kPerfLogicalProcessors);
+  s.virtual_machine = LanguageManager::GetString(StringId::kPerfVirtualMachine);
+  s.l1_cache = LanguageManager::GetString(StringId::kPerfL1Cache);
+  s.l2_cache = LanguageManager::GetString(StringId::kPerfL2Cache);
+  s.l3_cache = LanguageManager::GetString(StringId::kPerfL3Cache);
+  s.yes = LanguageManager::GetString(StringId::kYes);
+  s.no = LanguageManager::GetString(StringId::kNo);
+  s.not_applicable = LanguageManager::GetString(StringId::kNotApplicable);
+  s.graph_60s_cpu_pct = LanguageManager::GetString(StringId::kPerfGraph60sCpuPct);
+  s.graph_60s_mem = LanguageManager::GetString(StringId::kPerfGraph60sMem);
+  s.graph_60s_net = LanguageManager::GetString(StringId::kPerfGraph60sNet);
+  s.memory_composition = LanguageManager::GetString(StringId::kPerfMemoryComposition);
+  s.in_use = LanguageManager::GetString(StringId::kPerfInUse);
+  s.available = LanguageManager::GetString(StringId::kPerfAvailable);
+  s.committed = LanguageManager::GetString(StringId::kPerfCommitted);
+  s.cached = LanguageManager::GetString(StringId::kPerfCached);
+  s.paged_pool = LanguageManager::GetString(StringId::kPerfPagedPool);
+  s.non_paged_pool = LanguageManager::GetString(StringId::kPerfNonPagedPool);
+  s.total_physical = LanguageManager::GetString(StringId::kPerfTotalPhysical);
+  s.send = LanguageManager::GetString(StringId::kPerfSend);
+  s.receive = LanguageManager::GetString(StringId::kPerfReceive);
+  s.adapter_name = LanguageManager::GetString(StringId::kPerfAdapterName);
+  s.connection_type = LanguageManager::GetString(StringId::kPerfConnectionType);
+  s.ipv4_address = LanguageManager::GetString(StringId::kPerfIpv4Address);
+  s.ipv6_address = LanguageManager::GetString(StringId::kPerfIpv6Address);
+  s.link_speed = LanguageManager::GetString(StringId::kPerfLinkSpeed);
+  s.menu_graph_logical = LanguageManager::GetString(StringId::kPerfMenuGraphLogical);
+  s.menu_graph_overall = LanguageManager::GetString(StringId::kPerfMenuGraphOverall);
+  s.no_network_adapters = LanguageManager::GetString(StringId::kPerfNoNetworkAdapters);
+  return s;
 }
 
 void MainWindow::RebuildServiceListViewColumns() {
@@ -3157,7 +3363,7 @@ void MainWindow::GoToSelectedServiceProcess() {
   if (!svc || svc->pid == 0) return;
 
   current_tab_ = MainTab::kProcesses;
-  TabCtrl_SetCurSel(tab_control_, 0);
+  TabCtrl_SetCurSel(tab_control_, static_cast<int>(MainTab::kProcesses));
   OnTabChanged();
 
   if (settings_.display_mode == ViewDisplayMode::kProcessTree) {
@@ -3207,7 +3413,7 @@ void MainWindow::GoToProcessRelatedServices() {
   if (!proc) return;
 
   current_tab_ = MainTab::kServices;
-  TabCtrl_SetCurSel(tab_control_, 1);
+  TabCtrl_SetCurSel(tab_control_, static_cast<int>(MainTab::kServices));
   OnTabChanged();
 
   int count = ListView_GetItemCount(service_list_view_);
@@ -3385,6 +3591,9 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 
     case WM_TIMER: {
       if (wparam == IDT_REFRESH_TIMER) {
+        if (current_tab_ != MainTab::kPerformance) {
+          SampleAndUpdatePerformanceView();
+        }
         RefreshData();
       } else if (wparam == IDT_SEARCH_DEBOUNCE_TIMER) {
         KillTimer(hwnd_, IDT_SEARCH_DEBOUNCE_TIMER);
@@ -3450,6 +3659,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
       switch (id) {
         case IDC_BTN_TREE:
         case IDM_TOGGLE_TREE: {
+          if (current_tab_ != MainTab::kProcesses) break;
           bool is_tree = (settings_.display_mode == ViewDisplayMode::kProcessTree);
           settings_.display_mode = is_tree ? ViewDisplayMode::kFlatList : ViewDisplayMode::kProcessTree;
           SendMessageW(btn_tree_, BM_SETIMAGE, IMAGE_ICON, reinterpret_cast<LPARAM>(is_tree ? hicon_tree_ : hicon_list_));
@@ -3467,6 +3677,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 
         case IDC_BTN_COLUMNS:
         case IDM_SELECT_COLUMNS:
+          if (current_tab_ != MainTab::kProcesses) break;
           OpenColumnSelectorDialog();
           break;
 
@@ -3513,10 +3724,12 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 
         case IDC_BTN_ENDTASK:
         case IDM_END_TASK:
+          if (current_tab_ != MainTab::kProcesses) break;
           EndSelectedProcess();
           break;
 
         case IDM_END_TREE:
+          if (current_tab_ != MainTab::kProcesses) break;
           EndSelectedProcessTree();
           break;
 
@@ -3853,6 +4066,12 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
       HDC hdc = reinterpret_cast<HDC>(wparam);
       HWND ctl_hwnd = reinterpret_cast<HWND>(lparam);
       if (ctl_hwnd == search_edit_ || ctl_hwnd == filter_val_edit_) {
+        if (!IsWindowEnabled(ctl_hwnd)) {
+          const auto& palette = ThemeManager::GetPalette(settings_.theme);
+          SetTextColor(hdc, palette.text_secondary);
+          SetBkColor(hdc, palette.window_background);
+          return reinterpret_cast<INT_PTR>(palette.window_brush);
+        }
         wchar_t buf[256] = {0};
         GetWindowTextW(ctl_hwnd, buf, static_cast<int>(std::size(buf)));
         bool has_active_text = false;
@@ -3906,6 +4125,7 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
       KillTimer(hwnd_, IDT_REFRESH_TIMER);
       KillTimer(hwnd_, IDT_SEARCH_DEBOUNCE_TIMER);
       KillTimer(hwnd_, IDT_FILTER_SAVE_TIMER);
+      performance_view_.Destroy();
       PostQuitMessage(0);
       return 0;
     }

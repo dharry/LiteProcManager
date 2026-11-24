@@ -1,5 +1,10 @@
 set(TEST_SOURCES
     lite_proc_manager_test.cc
+    performance_formatter_test.cc
+    cpu_performance_collector_test.cc
+    memory_network_collector_test.cc
+    performance_graph_renderer_test.cc
+    performance_data_service_test.cc
     ../src/language_manager.cc
     ../src/icon_helper.cc
     ../src/process_snapshot_service.cc
@@ -11,6 +16,11 @@ set(TEST_SOURCES
     ../src/service_manager_service.cc
     ../src/monitor_rule.cc
     ../src/monitor_service.cc
+    ../src/performance_data_service.cc
+    ../src/performance_formatter.cc
+    ../src/performance_graph_renderer.cc
+    ../src/cpu_performance_collector.cc
+    ../src/memory_network_collector.cc
     ../src/toast_window.cc
     ../src/app_settings.cc
     ../third_party/jsoncpp/src/jsoncpp.cpp
@@ -61,6 +71,10 @@ target_link_libraries(LiteProcManagerTests PRIVATE
     gdi32
     shell32
     dwmapi
+    iphlpapi
+    powrprof
+    ws2_32
+    msimg32
 )
 
 if(VSTEST_CONSOLE_EXE)

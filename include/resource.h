@@ -81,6 +81,7 @@
 #define IDC_FILTER_CLEAR_BTN            318
 #define IDC_MAIN_TAB                    330
 #define IDC_SERVICE_LIST_VIEW           331
+#define IDC_PERFORMANCE_VIEW            332
 #define IDC_OPT_BTN_LIST_FONT           320
 #define IDC_OPT_LBL_LIST_FONT_VAL       321
 #define IDC_OPT_BTN_UI_FONT             322
@@ -485,6 +486,48 @@
 #define IDS_PRIVILEGE_ADMINISTRATOR     10351
 #define IDS_PRIVILEGE_STANDARD_USER     10352
 #define IDS_DEFAULT_MONITOR_RULE_NAME   10353
+
+// Performance Tab
+#define IDS_TAB_PERFORMANCE             10360
+#define IDS_PERF_CPU_TITLE              10361
+#define IDS_PERF_MEMORY_TITLE           10362
+#define IDS_PERF_NETWORK_FALLBACK       10363
+#define IDS_PERF_UTILIZATION            10364
+#define IDS_PERF_SPEED                  10365
+#define IDS_PERF_PROCESSES              10366
+#define IDS_PERF_THREADS                10367
+#define IDS_PERF_HANDLES                10368
+#define IDS_PERF_UPTIME                 10369
+#define IDS_PERF_BASE_SPEED             10370
+#define IDS_PERF_SOCKETS                10371
+#define IDS_PERF_CORES                  10372
+#define IDS_PERF_LOGICAL_PROCESSORS     10373
+#define IDS_PERF_VIRTUAL_MACHINE        10374
+#define IDS_PERF_L1_CACHE               10375
+#define IDS_PERF_L2_CACHE               10376
+#define IDS_PERF_L3_CACHE               10377
+#define IDS_PERF_GRAPH_60S_CPU_PCT      10378
+#define IDS_PERF_GRAPH_60S_MEM          10379
+#define IDS_PERF_GRAPH_60S_NET          10380
+#define IDS_PERF_MEMORY_COMPOSITION     10381
+#define IDS_PERF_IN_USE                 10382
+#define IDS_PERF_AVAILABLE              10383
+#define IDS_PERF_COMMITTED              10384
+#define IDS_PERF_CACHED                 10385
+#define IDS_PERF_PAGED_POOL             10386
+#define IDS_PERF_NON_PAGED_POOL         10387
+#define IDS_PERF_TOTAL_PHYSICAL         10388
+#define IDS_PERF_SEND                   10389
+#define IDS_PERF_RECEIVE                10390
+#define IDS_PERF_ADAPTER_NAME           10391
+#define IDS_PERF_CONNECTION_TYPE        10392
+#define IDS_PERF_IPV4_ADDRESS           10393
+#define IDS_PERF_IPV6_ADDRESS           10394
+#define IDS_PERF_LINK_SPEED             10395
+#define IDS_PERF_MENU_GRAPH_LOGICAL     10396
+#define IDS_PERF_MENU_GRAPH_OVERALL     10397
+#define IDS_PERF_NO_NETWORK_ADAPTERS    10398
+#define IDS_SEARCH_PLACEHOLDER_SERVICE  10399
 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS

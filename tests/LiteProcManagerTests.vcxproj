@@ -67,7 +67,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <CETCompat>true</CETCompat>
       <AdditionalLibraryDirectories>$(VCInstallDir)Auxiliary\VS\UnitTest\lib;$(VCInstallDir)Auxiliary\VS\UnitTest\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>version.lib;advapi32.lib;dwmapi.lib;user32.lib;gdi32.lib;shell32.lib;comctl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>version.lib;advapi32.lib;dwmapi.lib;user32.lib;gdi32.lib;shell32.lib;comctl32.lib;iphlpapi.lib;powrprof.lib;ws2_32.lib;msimg32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -93,7 +93,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <CETCompat>true</CETCompat>
       <AdditionalLibraryDirectories>$(VCInstallDir)Auxiliary\VS\UnitTest\lib;$(VCInstallDir)Auxiliary\VS\UnitTest\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>version.lib;advapi32.lib;dwmapi.lib;user32.lib;gdi32.lib;shell32.lib;comctl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>version.lib;advapi32.lib;dwmapi.lib;user32.lib;gdi32.lib;shell32.lib;comctl32.lib;iphlpapi.lib;powrprof.lib;ws2_32.lib;msimg32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -102,6 +102,11 @@
     <ClCompile Include="..\src\language_manager.cc" />
     <ClCompile Include="..\src\monitor_rule.cc" />
     <ClCompile Include="..\src\monitor_service.cc" />
+    <ClCompile Include="..\src\cpu_performance_collector.cc" />
+    <ClCompile Include="..\src\memory_network_collector.cc" />
+    <ClCompile Include="..\src\performance_data_service.cc" />
+    <ClCompile Include="..\src\performance_formatter.cc" />
+    <ClCompile Include="..\src\performance_graph_renderer.cc" />
     <ClCompile Include="..\src\toast_window.cc" />
     <ClCompile Include="..\src\process_column.cc" />
     <ClCompile Include="..\src\process_export.cc" />
@@ -112,6 +117,11 @@
     <ClCompile Include="..\src\service_manager_service.cc" />
     <ClCompile Include="..\third_party\jsoncpp\src\jsoncpp.cpp" />
     <ClCompile Include="lite_proc_manager_test.cc" />
+    <ClCompile Include="performance_formatter_test.cc" />
+    <ClCompile Include="cpu_performance_collector_test.cc" />
+    <ClCompile Include="memory_network_collector_test.cc" />
+    <ClCompile Include="performance_graph_renderer_test.cc" />
+    <ClCompile Include="performance_data_service_test.cc" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\resource.rc" />

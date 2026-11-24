@@ -20,6 +20,8 @@
 #include "app_settings.h"
 #include "icon_helper.h"
 #include "monitor_service.h"
+#include "performance_data_service.h"
+#include "performance_view.h"
 #include "process_item.h"
 #include "process_snapshot_service.h"
 #include "service_item.h"
@@ -29,7 +31,8 @@ namespace lite_proc_manager {
 
 enum class MainTab {
   kProcesses = 0,
-  kServices = 1,
+  kPerformance = 1,
+  kServices = 2,
 };
 
 class MainWindow {
@@ -41,6 +44,7 @@ class MainWindow {
   int RunMessageLoop();
 
   bool IsDarkMode() const { return settings_.theme == AppTheme::kDark; }
+  MainTab GetCurrentTab() const { return current_tab_; }
 
  private:
   struct ProcessIdentity {
@@ -130,6 +134,7 @@ class MainWindow {
 
   // Tab and Services Management
   void OnTabChanged();
+  void UpdateTabControlStates();
   void RebuildServiceListViewColumns();
   void RefreshServicesData();
   void StartServiceRefreshWorker();
@@ -146,6 +151,8 @@ class MainWindow {
   void ShowServiceContextMenu(int x, int y);
   void GoToSelectedServiceProcess();
   void GoToProcessRelatedServices();
+  void SampleAndUpdatePerformanceView();
+  PerformanceStrings BuildPerformanceStrings() const;
 
   HWND hwnd_{nullptr};
   HINSTANCE instance_{nullptr};
@@ -173,6 +180,7 @@ class MainWindow {
   HWND listview_hwnd_{nullptr};
   HWND treeview_hwnd_{nullptr};
   HWND service_list_view_{nullptr};
+  PerformanceView performance_view_;
   HWND statusbar_hwnd_{nullptr};
   HWND tooltip_hwnd_{nullptr};
 
@@ -188,6 +196,7 @@ class MainWindow {
   ProcessSnapshotService snapshot_service_;
   MonitorService monitor_service_;
   ServiceManagerService service_manager_service_;
+  PerformanceDataService performance_data_service_;
   IconHelper icon_helper_;
   bool is_elevated_{false};
   MainTab current_tab_{MainTab::kProcesses};

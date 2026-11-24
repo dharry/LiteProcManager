@@ -14,6 +14,12 @@ set(SOURCES
     monitor_rule.cc
     monitor_service.cc
     monitor_dialog.cc
+    performance_data_service.cc
+    performance_formatter.cc
+    performance_graph_renderer.cc
+    performance_view.cc
+    cpu_performance_collector.cc
+    memory_network_collector.cc
     toast_window.cc
     app_settings.cc
     options_dialog.cc
@@ -40,4 +46,8 @@ target_link_libraries(LiteProcManager PRIVATE
     advapi32
     user32
     gdi32
+    iphlpapi
+    powrprof
+    ws2_32
+    msimg32
 )
