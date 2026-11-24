@@ -6,7 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(MSVC)
-    add_compile_options(/utf-8 /EHsc)
+    add_compile_options(/utf-8 /EHsc /W4 /sdl /guard:cf)
+    add_link_options(/GUARD:CF /CETCOMPAT)
 endif()
 
 add_definitions(-DUNICODE -D_UNICODE -DNOMINMAX)

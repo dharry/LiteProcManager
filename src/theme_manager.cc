@@ -1,4 +1,4 @@
-﻿// Copyright 2026 LiteProcManager Authors. All rights reserved.
+// Copyright 2026 LiteProcManager Authors. All rights reserved.
 
 #include "theme_manager.h"
 
@@ -15,6 +15,7 @@ using PfnFlushMenuThemes = void(WINAPI*)();
 PfnSetPreferredAppMode pfn_set_preferred_app_mode = nullptr;
 PfnAllowDarkModeForWindow pfn_allow_dark_mode_for_window = nullptr;
 PfnFlushMenuThemes pfn_flush_menu_themes = nullptr;
+HMODULE g_loaded_uxtheme = nullptr;
 
 BOOL CALLBACK ApplyFontToChildWindow(HWND hwnd, LPARAM lparam) {
   SendMessageW(hwnd, WM_SETFONT, static_cast<WPARAM>(lparam), TRUE);
@@ -25,6 +26,7 @@ void InitDarkModeApis() {
   HMODULE uxtheme = GetModuleHandleW(L"uxtheme.dll");
   if (!uxtheme) {
     uxtheme = LoadLibraryExW(L"uxtheme.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    g_loaded_uxtheme = uxtheme;
   }
   if (uxtheme) {
     // Ordinal 135: SetPreferredAppMode (Windows 10 1903+)
@@ -39,6 +41,16 @@ void InitDarkModeApis() {
     // Ordinal 136: FlushMenuThemes
     pfn_flush_menu_themes = reinterpret_cast<PfnFlushMenuThemes>(
         GetProcAddress(uxtheme, MAKEINTRESOURCEA(136)));
+  }
+}
+
+void ShutdownDarkModeApis() {
+  pfn_set_preferred_app_mode = nullptr;
+  pfn_allow_dark_mode_for_window = nullptr;
+  pfn_flush_menu_themes = nullptr;
+  if (g_loaded_uxtheme) {
+    FreeLibrary(g_loaded_uxtheme);
+    g_loaded_uxtheme = nullptr;
   }
 }
 }  // namespace
@@ -116,6 +128,7 @@ void ThemeManager::Shutdown() {
   if (light_palette_.control_brush) DeleteObject(light_palette_.control_brush);
   if (light_palette_.strip_brush) DeleteObject(light_palette_.strip_brush);
 
+  ShutdownDarkModeApis();
   initialized_ = false;
 }
 

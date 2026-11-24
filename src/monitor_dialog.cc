@@ -334,7 +334,7 @@ bool MonitorDialog::Show() {
 }
 
 bool MonitorDialog::ShowAddRuleForProcess(
-    HWND parent_hwnd, const std::wstring& process_name, uint32_t pid,
+    HWND parent_hwnd, const std::wstring& process_name, uint32_t /*pid*/,
     std::vector<MonitorRule>* in_out_rules, AppTheme theme, HFONT ui_font) {
   MonitorRule new_rule;
   new_rule.name = process_name;

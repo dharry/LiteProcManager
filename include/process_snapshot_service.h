@@ -108,10 +108,14 @@ class ProcessSnapshotService {
   void EnrichProcessDetails(ProcessItem* item, const ProcessSnapshotOptions& options);
   static std::wstring QueryProcessUser(HANDLE token_handle);
   static std::wstring QueryProcessCommandLine(HANDLE process_handle);
-  static std::wstring QueryProcessDpiAwareness(HANDLE process_handle);
+  std::wstring QueryProcessDpiAwareness(HANDLE process_handle) const;
+
+  using PfnGetProcessDpiAwareness = HRESULT(WINAPI*)(HANDLE hProcess, int* value);
 
   PfnNtQuerySystemInformation pfn_nt_query_system_information_{nullptr};
   HMODULE ntdll_module_{nullptr};
+  HMODULE loaded_shcore_module_{nullptr};
+  PfnGetProcessDpiAwareness pfn_get_process_dpi_awareness_{nullptr};
 
   void* buffer_{nullptr};
   uint32_t buffer_size_{1024 * 1024};  // Initial 1MB

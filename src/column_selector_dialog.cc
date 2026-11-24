@@ -92,7 +92,7 @@ INT_PTR CALLBACK ColumnSelectorDialog::DialogProc(HWND hwnd, UINT msg, WPARAM wp
   return FALSE;
 }
 
-INT_PTR ColumnSelectorDialog::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+INT_PTR ColumnSelectorDialog::HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM /*lparam*/) {
   switch (msg) {
     case WM_COMMAND: {
       int id = LOWORD(wparam);

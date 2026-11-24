@@ -519,7 +519,7 @@ constexpr UINT_PTR kListViewSubclassId = 0x9003;
 
 LRESULT CALLBACK ListViewSubclassProc(
     HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam,
-    UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    UINT_PTR uIdSubclass, DWORD_PTR /*dwRefData*/) {
   switch (msg) {
     case WM_KEYDOWN: {
       if ((wparam == 'A' || wparam == 'a') && (GetKeyState(VK_CONTROL) & 0x8000)) {
@@ -2399,7 +2399,7 @@ void MainWindow::OpenColumnSelectorDialog() {
 }
 
 LRESULT CALLBACK MainWindow::HeaderSubclassProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam,
-                                                UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+                                                UINT_PTR /*uIdSubclass*/, DWORD_PTR dwRefData) {
   auto* self = reinterpret_cast<MainWindow*>(dwRefData);
   if (!self) {
     return DefSubclassProc(hwnd, msg, wparam, lparam);

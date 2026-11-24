@@ -26,11 +26,9 @@ uint64_t FileTimeToUint64(const FILETIME& ft) {
 }
 
 using PfnGetPackageFullName = LONG(WINAPI*)(HANDLE hProcess, UINT32* packageFullNameLength, PWSTR packageFullName);
-using PfnGetProcessDpiAwareness = HRESULT(WINAPI*)(HANDLE hProcess, int* value);
 
 PfnGetPackageFullName pfn_get_package_full_name = nullptr;
 PfnNtQueryInformationProcess pfn_nt_query_information_process = nullptr;
-PfnGetProcessDpiAwareness pfn_get_process_dpi_awareness = nullptr;
 
 void InitOptionalApis() {
   HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
@@ -43,15 +41,6 @@ void InitOptionalApis() {
   if (ntdll) {
     pfn_nt_query_information_process = reinterpret_cast<PfnNtQueryInformationProcess>(
         GetProcAddress(ntdll, "NtQueryInformationProcess"));
-  }
-
-  HMODULE shcore = GetModuleHandleW(L"shcore.dll");
-  if (!shcore) {
-    shcore = LoadLibraryExW(L"shcore.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
-  }
-  if (shcore) {
-    pfn_get_process_dpi_awareness = reinterpret_cast<PfnGetProcessDpiAwareness>(
-        GetProcAddress(shcore, "GetProcessDpiAwareness"));
   }
 }
 
@@ -171,6 +160,17 @@ ProcessSnapshotService::ProcessSnapshotService() {
         GetProcAddress(ntdll_module_, "NtQuerySystemInformation"));
   }
 
+  HMODULE shcore = GetModuleHandleW(L"shcore.dll");
+  if (!shcore) {
+    loaded_shcore_module_ = LoadLibraryExW(
+        L"shcore.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    shcore = loaded_shcore_module_;
+  }
+  if (shcore) {
+    pfn_get_process_dpi_awareness_ = reinterpret_cast<PfnGetProcessDpiAwareness>(
+        GetProcAddress(shcore, "GetProcessDpiAwareness"));
+  }
+
   buffer_ = VirtualAlloc(nullptr, buffer_size_, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
   SYSTEM_INFO si;
@@ -192,6 +192,11 @@ ProcessSnapshotService::~ProcessSnapshotService() {
   if (buffer_) {
     VirtualFree(buffer_, 0, MEM_RELEASE);
     buffer_ = nullptr;
+  }
+  pfn_get_process_dpi_awareness_ = nullptr;
+  if (loaded_shcore_module_) {
+    FreeLibrary(loaded_shcore_module_);
+    loaded_shcore_module_ = nullptr;
   }
 }
 
@@ -652,13 +657,13 @@ std::wstring ProcessSnapshotService::QueryProcessCommandLine(HANDLE process_hand
   return std::wstring(cmd->Buffer, cmd->Length / sizeof(wchar_t));
 }
 
-std::wstring ProcessSnapshotService::QueryProcessDpiAwareness(HANDLE process_handle) {
-  if (!process_handle || !pfn_get_process_dpi_awareness) {
+std::wstring ProcessSnapshotService::QueryProcessDpiAwareness(HANDLE process_handle) const {
+  if (!process_handle || !pfn_get_process_dpi_awareness_) {
     return L"-";
   }
 
   int awareness = -1;
-  if (FAILED(pfn_get_process_dpi_awareness(process_handle, &awareness))) {
+  if (FAILED(pfn_get_process_dpi_awareness_(process_handle, &awareness))) {
     return L"-";
   }
 
