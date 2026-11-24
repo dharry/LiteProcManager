@@ -1,4 +1,4 @@
-﻿// Copyright 2026 LiteProcManager Authors. All rights reserved.
+// Copyright 2026 LiteProcManager Authors. All rights reserved.
 
 #include "column_selector_dialog.h"
 
@@ -185,9 +185,23 @@ void ColumnSelectorDialog::ResetDefault() {
 }
 
 void ColumnSelectorDialog::OnOk() {
+  bool any_visible = false;
   for (size_t i = 0; i < columns_.size(); ++i) {
     columns_[i].visible = (ListView_GetCheckState(listbox_hwnd_, i) != FALSE);
     columns_[i].order = static_cast<int>(i);
+    if (columns_[i].visible) {
+      any_visible = true;
+    }
+  }
+
+  if (!any_visible && !columns_.empty()) {
+    auto name_it = std::find_if(columns_.begin(), columns_.end(),
+                                [](const ProcessColumnInfo& c) { return c.id == ProcessColumnId::kName; });
+    if (name_it != columns_.end()) {
+      name_it->visible = true;
+    } else {
+      columns_[0].visible = true;
+    }
   }
 }
 

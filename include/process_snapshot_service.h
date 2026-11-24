@@ -99,7 +99,7 @@ class ProcessSnapshotService {
   };
 
   void EnrichProcessDetails(ProcessItem* item, const ProcessSnapshotOptions& options);
-  static std::wstring QueryProcessUser(HANDLE process_handle);
+  static std::wstring QueryProcessUser(HANDLE token_handle);
 
   PfnNtQuerySystemInformation pfn_nt_query_system_information_{nullptr};
   HMODULE ntdll_module_{nullptr};

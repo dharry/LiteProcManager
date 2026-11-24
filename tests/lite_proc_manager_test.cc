@@ -1283,4 +1283,249 @@ TEST_CLASS(TrayTooltipTests) {
   }
 };
 
+TEST_CLASS(AuditFixRegressionTests) {
+ public:
+  TEST_METHOD(ServiceRestart_ShouldFailOnStopErrorAndTimeoutWithoutStarting) {
+    // 1. Stop request fails -> must return false and never call start_service
+    {
+      bool start_called = false;
+      ServiceManagerService::RestartCallbacks cb;
+      cb.stop_service = []() -> DWORD { return ERROR_ACCESS_DENIED; };
+      cb.query_state = [](DWORD* state) -> DWORD {
+        if (state) *state = SERVICE_RUNNING;
+        return ERROR_SUCCESS;
+      };
+      cb.start_service = [&start_called]() -> DWORD {
+        start_called = true;
+        return ERROR_SUCCESS;
+      };
+      cb.sleep = [](DWORD) {};
+      cb.max_wait_iterations = 3;
+
+      std::wstring err;
+      Assert::IsFalse(ServiceManagerService::ExecuteServiceRestart(cb, &err));
+      Assert::IsFalse(start_called);
+      Assert::IsFalse(err.empty());
+    }
+
+    // 2. Stop times out (never reaches SERVICE_STOPPED) -> must return false and never start
+    {
+      bool start_called = false;
+      ServiceManagerService::RestartCallbacks cb;
+      cb.stop_service = []() -> DWORD { return ERROR_SUCCESS; };
+      cb.query_state = [](DWORD* state) -> DWORD {
+        if (state) *state = SERVICE_STOP_PENDING;
+        return ERROR_SUCCESS;
+      };
+      cb.start_service = [&start_called]() -> DWORD {
+        start_called = true;
+        return ERROR_SERVICE_ALREADY_RUNNING;
+      };
+      cb.sleep = [](DWORD) {};
+      cb.max_wait_iterations = 3;
+
+      std::wstring err;
+      Assert::IsFalse(ServiceManagerService::ExecuteServiceRestart(cb, &err));
+      Assert::IsFalse(start_called);
+      Assert::IsFalse(err.empty());
+    }
+
+    // 3. Already stopped (ERROR_SERVICE_NOT_ACTIVE) -> starts cleanly
+    {
+      bool start_called = false;
+      ServiceManagerService::RestartCallbacks cb;
+      cb.stop_service = []() -> DWORD { return ERROR_SERVICE_NOT_ACTIVE; };
+      cb.query_state = [](DWORD* state) -> DWORD {
+        if (state) *state = SERVICE_STOPPED;
+        return ERROR_SUCCESS;
+      };
+      cb.start_service = [&start_called]() -> DWORD {
+        start_called = true;
+        return ERROR_SUCCESS;
+      };
+      cb.sleep = [](DWORD) {};
+
+      std::wstring err;
+      Assert::IsTrue(ServiceManagerService::ExecuteServiceRestart(cb, &err));
+      Assert::IsTrue(start_called);
+    }
+
+    // 4. Transitions to SERVICE_STOPPED on 2nd poll -> starts cleanly
+    {
+      int poll_count = 0;
+      bool start_called = false;
+      ServiceManagerService::RestartCallbacks cb;
+      cb.stop_service = []() -> DWORD { return ERROR_SUCCESS; };
+      cb.query_state = [&poll_count](DWORD* state) -> DWORD {
+        ++poll_count;
+        if (state) *state = (poll_count >= 2) ? SERVICE_STOPPED : SERVICE_STOP_PENDING;
+        return ERROR_SUCCESS;
+      };
+      cb.start_service = [&start_called]() -> DWORD {
+        start_called = true;
+        return ERROR_SUCCESS;
+      };
+      cb.sleep = [](DWORD) {};
+      cb.max_wait_iterations = 5;
+
+      std::wstring err;
+      Assert::IsTrue(ServiceManagerService::ExecuteServiceRestart(cb, &err));
+      Assert::IsTrue(start_called);
+      Assert::AreEqual(2, poll_count);
+    }
+  }
+
+  TEST_METHOD(AppSettings_ShouldPersistContainsOperatorInJapaneseLocale) {
+    LanguageManager::SetLanguage(AppLanguage::kJapanese);
+    std::wstring test_settings = L"test_ja_contains_settings.json";
+    std::wstring test_rules = L"test_ja_contains_rules.json";
+    DeleteFileW(test_settings.c_str());
+    DeleteFileW(test_rules.c_str());
+
+    AppSettings settings;
+    settings.display_filter_enabled = true;
+    settings.display_filter_condition.column_id = ProcessColumnId::kName;
+    settings.display_filter_condition.op = ComparisonOperator::kContains;
+    settings.display_filter_condition.string_value = L"chrome";
+
+    MonitorRule rule;
+    rule.id = L"rule_contains_ja";
+    rule.name = L"含むテスト";
+    MonitorCondition cond;
+    cond.column_id = ProcessColumnId::kName;
+    cond.op = ComparisonOperator::kContains;
+    cond.string_value = L"svchost";
+    rule.conditions.push_back(cond);
+    settings.monitor_rules.push_back(rule);
+
+    settings.SaveSettingsTo(test_settings);
+    settings.SaveMonitorRulesTo(test_rules);
+
+    AppSettings loaded = AppSettings::LoadFrom(test_settings, test_rules);
+    Assert::IsTrue(loaded.display_filter_condition.op == ComparisonOperator::kContains);
+    Assert::AreEqual(1ULL, loaded.monitor_rules.size());
+    Assert::AreEqual(1ULL, loaded.monitor_rules[0].conditions.size());
+    Assert::IsTrue(loaded.monitor_rules[0].conditions[0].op == ComparisonOperator::kContains);
+
+    // Also verify backward compatibility for legacy localized "含む" JSON
+    {
+      std::ofstream out(test_settings, std::ios::binary | std::ios::trunc);
+      const char* legacy_json =
+          "{\"DisplayFilter\":{\"Enabled\":true,\"ColumnId\":0,\"Operator\":\"\xE5\x90\xAB\xE3\x82\x80\",\"NumericValue\":0,\"StringValue\":\"test\"}}";
+      out.write(legacy_json, strlen(legacy_json));
+    }
+    AppSettings legacy_loaded = AppSettings::LoadFrom(test_settings, test_rules);
+    Assert::IsTrue(legacy_loaded.display_filter_condition.op == ComparisonOperator::kContains);
+
+    DeleteFileW(test_settings.c_str());
+    DeleteFileW(test_rules.c_str());
+  }
+
+  TEST_METHOD(AppSettings_ShouldClampOutOfRangeValuesAndEnsureVisibleColumn) {
+    std::wstring test_settings = L"test_schema_bounds_settings.json";
+    std::wstring test_rules = L"test_schema_bounds_rules.json";
+    DeleteFileW(test_settings.c_str());
+    DeleteFileW(test_rules.c_str());
+
+    // Build JSON with all default columns set to Visible: false plus a duplicate ID 0
+    {
+      auto default_cols = ProcessColumnInfo::GetDefaultColumns();
+      std::string cols_json = "[";
+      cols_json += "{\"Id\":0,\"Visible\":false,\"Width\":5,\"Order\":0},";
+      for (size_t i = 0; i < default_cols.size(); ++i) {
+        if (i > 0) cols_json += ",";
+        cols_json += "{\"Id\":" + std::to_string(static_cast<int>(default_cols[i].id)) +
+                     ",\"Visible\":false,\"Width\":5000,\"Order\":" + std::to_string(i + 1) + "}";
+      }
+      cols_json += "]";
+
+      std::string malformed_json =
+          "{\"General\":{\"ListFontSize\":-50,\"UIFontSize\":999,"
+          "\"RefreshIntervalSeconds\":99999999,\"WindowWidth\":10,\"WindowHeight\":99999},"
+          "\"Columns\":" + cols_json +
+          ",\"DisplayFilter\":{\"Enabled\":true,\"ColumnId\":99999,\"Operator\":\">\"}}";
+
+      std::ofstream out(test_settings, std::ios::binary | std::ios::trunc);
+      out.write(malformed_json.data(), malformed_json.size());
+    }
+
+    {
+      std::ofstream out(test_rules, std::ios::binary | std::ios::trunc);
+      const char* rules_json =
+          "{\"MonitorRules\":[{\"Id\":\"r_bounds\",\"Name\":\"Bounds\","
+          "\"CooldownSeconds\":999999,\"Conditions\":[{\"ColumnId\":99999,\"Operator\":\">=\",\"NumericValue\":50}]}]}";
+      out.write(rules_json, strlen(rules_json));
+    }
+
+    AppSettings loaded = AppSettings::LoadFrom(test_settings, test_rules);
+    Assert::AreEqual(6, loaded.list_font_size);
+    Assert::AreEqual(72, loaded.ui_font_size);
+    Assert::AreEqual(300, loaded.refresh_interval_seconds);
+    Assert::AreEqual(400, loaded.window_width);
+    Assert::AreEqual(8192, loaded.window_height);
+
+    // Ensure duplicate column IDs were deduplicated
+    Assert::AreEqual(ProcessColumnInfo::GetDefaultColumns().size(), loaded.columns.size());
+
+    // Ensure at least one column is visible even when all columns were hidden, and widths are clamped
+    bool any_visible = false;
+    for (const auto& col : loaded.columns) {
+      Assert::IsTrue(col.default_width >= 30 && col.default_width <= 2000);
+      if (col.visible) any_visible = true;
+    }
+    Assert::IsTrue(any_visible);
+
+    // Invalid column IDs fall back to kCpu
+    Assert::IsTrue(loaded.display_filter_condition.column_id == ProcessColumnId::kCpu);
+    Assert::AreEqual(1ULL, loaded.monitor_rules.size());
+    Assert::AreEqual(3600, loaded.monitor_rules[0].cooldown_seconds);
+    Assert::IsTrue(loaded.monitor_rules[0].conditions[0].column_id == ProcessColumnId::kCpu);
+
+    DeleteFileW(test_settings.c_str());
+    DeleteFileW(test_rules.c_str());
+  }
+
+  TEST_METHOD(MonitorService_ShouldPruneCooldownCacheOnExitAndRuleRemoval) {
+    MonitorService service;
+
+    MonitorRule r1;
+    r1.id = L"rule_prune_1";
+    r1.name = L"Rule 1";
+    r1.target_pattern = L"app";
+    r1.cooldown_seconds = 60;
+    MonitorCondition c1;
+    c1.column_id = ProcessColumnId::kCpu;
+    c1.op = ComparisonOperator::kGreaterThanOrEqual;
+    c1.numeric_value = 50.0;
+    r1.conditions.push_back(c1);
+
+    MonitorRule r2 = r1;
+    r2.id = L"rule_prune_2";
+    r2.name = L"Rule 2";
+
+    service.SetRules({r1, r2});
+
+    auto p1 = std::make_shared<ProcessItem>();
+    p1->name = L"app1.exe";
+    p1->process_id = 1001;
+    p1->cpu_percent = 90.0;
+
+    auto p2 = std::make_shared<ProcessItem>();
+    p2->name = L"app2.exe";
+    p2->process_id = 1002;
+    p2->cpu_percent = 90.0;
+
+    auto events = service.CheckProcesses({p1, p2});
+    Assert::AreEqual(4ULL, events.size());
+    Assert::AreEqual(4ULL, service.GetNotifiedCacheSize());
+
+    // p2 terminates -> 2 entries for PID 1002 must be pruned
+    service.CheckProcesses({p1});
+    Assert::AreEqual(2ULL, service.GetNotifiedCacheSize());
+
+    // Remove r2 -> entry for r2 must be pruned
+    service.SetRules({r1});
+    Assert::AreEqual(1ULL, service.GetNotifiedCacheSize());
+  }
+};
 }  // namespace LiteProcManagerTests

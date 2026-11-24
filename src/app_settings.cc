@@ -9,6 +9,7 @@
 #include <atomic>
 #include <fstream>
 #include <limits>
+#include <unordered_set>
 
 #include "json_helper.h"
 
@@ -16,7 +17,24 @@ namespace lite_proc_manager {
 
 namespace {
 constexpr std::streamoff kMaximumJsonFileBytes = 4 * 1024 * 1024;
+constexpr int kMinFontSizePt = 6;
+constexpr int kMaxFontSizePt = 72;
+constexpr int kMinRefreshIntervalSeconds = 0;
+constexpr int kMaxRefreshIntervalSeconds = 300;
+constexpr int kMinWindowWidth = 400;
+constexpr int kMaxWindowWidth = 8192;
+constexpr int kMinWindowHeight = 300;
+constexpr int kMaxWindowHeight = 8192;
+constexpr int kMinColumnWidth = 30;
+constexpr int kMaxColumnWidth = 2000;
+constexpr int kMinCooldownSeconds = 1;
+constexpr int kMaxCooldownSeconds = 3600;
 std::atomic_uint32_t g_temporary_file_sequence{0};
+
+bool IsValidProcessColumnId(int id, const std::vector<ProcessColumnInfo>& default_cols) {
+  return std::any_of(default_cols.begin(), default_cols.end(),
+                     [id](const ProcessColumnInfo& c) { return static_cast<int>(c.id) == id; });
+}
 
 std::wstring ReadUtf8File(const std::wstring& path) {
   std::ifstream file(path, std::ios::binary);
@@ -273,34 +291,44 @@ AppSettings AppSettings::LoadFrom(const std::wstring& settings_path, const std::
           settings.ui_font_size = 9;
         }
 
+        settings.list_font_size = std::clamp(settings.list_font_size, kMinFontSizePt, kMaxFontSizePt);
+        settings.ui_font_size = std::clamp(settings.ui_font_size, kMinFontSizePt, kMaxFontSizePt);
+
         std::wstring mode_str = gen[L"DisplayMode"].as_string(L"FlatList");
         settings.display_mode = (mode_str == L"ProcessTree") ? ViewDisplayMode::kProcessTree : ViewDisplayMode::kFlatList;
 
-        settings.refresh_interval_seconds = gen[L"RefreshIntervalSeconds"].as_int(2);
+        settings.refresh_interval_seconds = std::clamp(
+            gen[L"RefreshIntervalSeconds"].as_int(2),
+            kMinRefreshIntervalSeconds, kMaxRefreshIntervalSeconds);
         settings.always_on_top = gen[L"AlwaysOnTop"].as_bool(false);
         settings.minimize_to_tray = gen[L"MinimizeToTray"].as_bool(true);
         settings.auto_start = IsAutoStartConfigured();
-        settings.window_width = gen[L"WindowWidth"].as_int(1150);
-        settings.window_height = gen[L"WindowHeight"].as_int(700);
+        settings.window_width = std::clamp(
+            gen[L"WindowWidth"].as_int(1150), kMinWindowWidth, kMaxWindowWidth);
+        settings.window_height = std::clamp(
+            gen[L"WindowHeight"].as_int(700), kMinWindowHeight, kMaxWindowHeight);
         settings.is_maximized = gen[L"IsMaximized"].as_bool(false);
       }
 
       // Columns
+      const auto default_cols = ProcessColumnInfo::GetDefaultColumns();
       if (root.has_key(L"Columns") && root[L"Columns"].is_array()) {
         const auto& cols_arr = root[L"Columns"].as_array();
-        auto default_cols = ProcessColumnInfo::GetDefaultColumns();
         std::vector<ProcessColumnInfo> loaded_cols;
+        std::unordered_set<int> seen_ids;
 
         for (const auto& col_val : cols_arr) {
           int id = col_val[L"Id"].as_int(-1);
-          if (id < 0) continue;
+          if (id < 0 || !seen_ids.insert(id).second) continue;
 
           auto it = std::find_if(default_cols.begin(), default_cols.end(),
                                  [id](const ProcessColumnInfo& c) { return static_cast<int>(c.id) == id; });
           if (it != default_cols.end()) {
             ProcessColumnInfo info = *it;
             info.visible = col_val[L"Visible"].as_bool(info.visible);
-            info.default_width = col_val[L"Width"].as_int(info.default_width);
+            info.default_width = std::clamp(
+                col_val[L"Width"].as_int(info.default_width),
+                kMinColumnWidth, kMaxColumnWidth);
             info.order = col_val[L"Order"].as_int(info.order);
             loaded_cols.push_back(info);
           }
@@ -318,6 +346,20 @@ AppSettings AppSettings::LoadFrom(const std::wstring& settings_path, const std::
         std::sort(loaded_cols.begin(), loaded_cols.end(),
                   [](const ProcessColumnInfo& a, const ProcessColumnInfo& b) { return a.order < b.order; });
 
+        bool any_visible = std::any_of(
+            loaded_cols.begin(), loaded_cols.end(),
+            [](const ProcessColumnInfo& c) { return c.visible; });
+        if (!any_visible && !loaded_cols.empty()) {
+          auto name_it = std::find_if(
+              loaded_cols.begin(), loaded_cols.end(),
+              [](const ProcessColumnInfo& c) { return c.id == ProcessColumnId::kName; });
+          if (name_it != loaded_cols.end()) {
+            name_it->visible = true;
+          } else {
+            loaded_cols[0].visible = true;
+          }
+        }
+
         settings.columns = loaded_cols;
       }
 
@@ -325,8 +367,11 @@ AppSettings AppSettings::LoadFrom(const std::wstring& settings_path, const std::
       if (root.has_key(L"DisplayFilter")) {
         const auto& df = root[L"DisplayFilter"];
         settings.display_filter_enabled = df[L"Enabled"].as_bool(false);
+        int filter_col_id = df[L"ColumnId"].as_int(static_cast<int>(ProcessColumnId::kCpu));
         settings.display_filter_condition.column_id =
-            static_cast<ProcessColumnId>(df[L"ColumnId"].as_int(static_cast<int>(ProcessColumnId::kCpu)));
+            IsValidProcessColumnId(filter_col_id, default_cols)
+                ? static_cast<ProcessColumnId>(filter_col_id)
+                : ProcessColumnId::kCpu;
 
         std::wstring op_str = df[L"Operator"].as_string(L">");
         if (op_str == L">") settings.display_filter_condition.op = ComparisonOperator::kGreaterThan;
@@ -335,7 +380,7 @@ AppSettings AppSettings::LoadFrom(const std::wstring& settings_path, const std::
         else if (op_str == L"<=") settings.display_filter_condition.op = ComparisonOperator::kLessThanOrEqual;
         else if (op_str == L"==") settings.display_filter_condition.op = ComparisonOperator::kEqual;
         else if (op_str == L"!=") settings.display_filter_condition.op = ComparisonOperator::kNotEqual;
-        else if (op_str == L"Contains") settings.display_filter_condition.op = ComparisonOperator::kContains;
+        else if (op_str == L"Contains" || op_str == L"含む") settings.display_filter_condition.op = ComparisonOperator::kContains;
 
         settings.display_filter_condition.numeric_value = df[L"NumericValue"].as_double(0.0);
         settings.display_filter_condition.string_value = df[L"StringValue"].as_string(L"");
@@ -384,14 +429,20 @@ AppSettings AppSettings::LoadFrom(const std::wstring& settings_path, const std::
         std::wstring logic_str = r_val[L"Logic"].as_string(L"And");
         rule.logical_op = (logic_str == L"Or") ? LogicalOperator::kOr : LogicalOperator::kAnd;
 
-        rule.cooldown_seconds = r_val[L"CooldownSeconds"].as_int(30);
+        rule.cooldown_seconds = std::clamp(
+            r_val[L"CooldownSeconds"].as_int(30),
+            kMinCooldownSeconds, kMaxCooldownSeconds);
         rule.notify_if_not_found = r_val[L"NotifyIfNotFound"].as_bool(false);
 
         if (r_val.has_key(L"Conditions") && r_val[L"Conditions"].is_array()) {
+          const auto default_cols = ProcessColumnInfo::GetDefaultColumns();
           const auto& conds_arr = r_val[L"Conditions"].as_array();
           for (const auto& c_val : conds_arr) {
             MonitorCondition cond;
-            cond.column_id = static_cast<ProcessColumnId>(c_val[L"ColumnId"].as_int(static_cast<int>(ProcessColumnId::kCpu)));
+            int cond_col_id = c_val[L"ColumnId"].as_int(static_cast<int>(ProcessColumnId::kCpu));
+            cond.column_id = IsValidProcessColumnId(cond_col_id, default_cols)
+                                 ? static_cast<ProcessColumnId>(cond_col_id)
+                                 : ProcessColumnId::kCpu;
 
             std::wstring op_str = c_val[L"Operator"].as_string(L">=");
             if (op_str == L">") cond.op = ComparisonOperator::kGreaterThan;
@@ -400,7 +451,7 @@ AppSettings AppSettings::LoadFrom(const std::wstring& settings_path, const std::
             else if (op_str == L"<=") cond.op = ComparisonOperator::kLessThanOrEqual;
             else if (op_str == L"==") cond.op = ComparisonOperator::kEqual;
             else if (op_str == L"!=") cond.op = ComparisonOperator::kNotEqual;
-            else if (op_str == L"Contains") cond.op = ComparisonOperator::kContains;
+            else if (op_str == L"Contains" || op_str == L"含む") cond.op = ComparisonOperator::kContains;
 
             cond.numeric_value = c_val[L"NumericValue"].as_double(80.0);
             cond.string_value = c_val[L"StringValue"].as_string(L"");
@@ -461,7 +512,7 @@ void AppSettings::SaveSettingsTo(const std::wstring& path) const {
 
   // DisplayFilter Object
   {
-    std::wstring op_str = MonitorRule::OperatorToString(display_filter_condition.op);
+    std::wstring op_str = MonitorRule::OperatorToConfigString(display_filter_condition.op);
     JsonObject df_obj;
     df_obj.push_back({L"Enabled", display_filter_enabled});
     df_obj.push_back({L"ColumnId", static_cast<int>(display_filter_condition.column_id)});
@@ -518,7 +569,7 @@ void AppSettings::SaveMonitorRulesTo(const std::wstring& path) const {
     for (const auto& cond : rule.conditions) {
       JsonObject c_obj;
       c_obj.push_back({L"ColumnId", static_cast<int>(cond.column_id)});
-      c_obj.push_back({L"Operator", MonitorRule::OperatorToString(cond.op)});
+      c_obj.push_back({L"Operator", MonitorRule::OperatorToConfigString(cond.op)});
       c_obj.push_back({L"NumericValue", cond.numeric_value});
       c_obj.push_back({L"StringValue", cond.string_value});
       conds_arr.push_back(JsonValue(c_obj));

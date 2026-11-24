@@ -1,4 +1,4 @@
-﻿// Copyright 2026 LiteProcManager Authors. All rights reserved.
+// Copyright 2026 LiteProcManager Authors. All rights reserved.
 
 #ifndef LITE_PROC_MANAGER_MONITOR_SERVICE_H_
 #define LITE_PROC_MANAGER_MONITOR_SERVICE_H_
@@ -41,6 +41,7 @@ class MonitorService {
 
   const std::vector<MonitorEvent>& GetRecentEvents() const { return event_history_; }
   void ClearHistory() { event_history_.clear(); }
+  size_t GetNotifiedCacheSize() const { return last_notified_map_.size(); }
 
   static void ShowBalloonNotification(
       HWND hwnd, UINT uID, EventLevel level,

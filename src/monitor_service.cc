@@ -4,16 +4,68 @@
 
 #include <algorithm>
 #include <cwchar>
+#include <unordered_set>
 
 #include "language_manager.h"
 #include "toast_window.h"
 
 namespace lite_proc_manager {
 
+namespace {
+constexpr wchar_t kNotFoundSuffix[] = L"_not_found";
+constexpr size_t kNotFoundSuffixLength = 10;
+
+bool ParseNotificationKey(const std::wstring& key, std::wstring* out_rule_id,
+                          bool* out_is_not_found, uint32_t* out_pid) {
+  if (key.size() > kNotFoundSuffixLength &&
+      key.compare(key.size() - kNotFoundSuffixLength, kNotFoundSuffixLength,
+                  kNotFoundSuffix) == 0) {
+    *out_rule_id = key.substr(0, key.size() - kNotFoundSuffixLength);
+    *out_is_not_found = true;
+    *out_pid = 0;
+    return true;
+  }
+
+  size_t sep = key.rfind(L'_');
+  if (sep == std::wstring::npos || sep == 0 || sep + 1 >= key.size()) {
+    return false;
+  }
+
+  *out_rule_id = key.substr(0, sep);
+  *out_is_not_found = false;
+  const wchar_t* pid_start = key.c_str() + sep + 1;
+  wchar_t* end_ptr = nullptr;
+  unsigned long parsed = std::wcstoul(pid_start, &end_ptr, 10);
+  if (end_ptr == pid_start || *end_ptr != L'\0') {
+    return false;
+  }
+  *out_pid = static_cast<uint32_t>(parsed);
+  return true;
+}
+}  // namespace
+
 MonitorService::MonitorService() = default;
 
 void MonitorService::SetRules(const std::vector<MonitorRule>& rules) {
   rules_ = rules;
+
+  std::unordered_set<std::wstring> active_rule_ids;
+  active_rule_ids.reserve(rules_.size());
+  for (const auto& rule : rules_) {
+    active_rule_ids.insert(rule.id);
+  }
+
+  for (auto it = last_notified_map_.begin(); it != last_notified_map_.end();) {
+    std::wstring rule_id;
+    bool is_not_found = false;
+    uint32_t pid = 0;
+    if (!ParseNotificationKey(it->first, &rule_id, &is_not_found, &pid) ||
+        active_rule_ids.find(rule_id) == active_rule_ids.end()) {
+      it = last_notified_map_.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 std::vector<MonitorEvent> MonitorService::CheckProcesses(
@@ -120,6 +172,34 @@ std::vector<MonitorEvent> MonitorService::CheckProcesses(
           ShowBalloonNotification(notify_hwnd, notify_id, rule.level, title, ev.reason);
         }
       }
+    }
+  }
+
+  // Prune cooldown entries for terminated processes or removed rules
+  std::unordered_set<std::wstring> active_rule_ids;
+  active_rule_ids.reserve(rules_.size());
+  for (const auto& rule : rules_) {
+    active_rule_ids.insert(rule.id);
+  }
+
+  std::unordered_set<uint32_t> alive_pids;
+  alive_pids.reserve(processes.size());
+  for (const auto& proc : processes) {
+    if (proc) {
+      alive_pids.insert(proc->process_id);
+    }
+  }
+
+  for (auto it = last_notified_map_.begin(); it != last_notified_map_.end();) {
+    std::wstring rule_id;
+    bool is_not_found = false;
+    uint32_t pid = 0;
+    if (!ParseNotificationKey(it->first, &rule_id, &is_not_found, &pid) ||
+        active_rule_ids.find(rule_id) == active_rule_ids.end() ||
+        (!is_not_found && alive_pids.find(pid) == alive_pids.end())) {
+      it = last_notified_map_.erase(it);
+    } else {
+      ++it;
     }
   }
 

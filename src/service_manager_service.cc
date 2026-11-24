@@ -230,6 +230,52 @@ bool ServiceManagerService::StopServiceByName(const std::wstring& service_name, 
   return success;
 }
 
+bool ServiceManagerService::ExecuteServiceRestart(
+    const RestartCallbacks& callbacks, std::wstring* error_msg) {
+  if (!callbacks.stop_service || !callbacks.query_state || !callbacks.start_service) {
+    if (error_msg) *error_msg = GetSystemErrorMessage(ERROR_INVALID_PARAMETER);
+    return false;
+  }
+
+  // 1. Request service stop and verify result
+  DWORD stop_err = callbacks.stop_service();
+  if (stop_err != ERROR_SUCCESS && stop_err != ERROR_SERVICE_NOT_ACTIVE) {
+    if (error_msg) *error_msg = GetSystemErrorMessage(stop_err);
+    return false;
+  }
+
+  // 2. Wait until service reaches SERVICE_STOPPED
+  bool stopped = (stop_err == ERROR_SERVICE_NOT_ACTIVE);
+  if (!stopped) {
+    int iterations = (std::max)(1, callbacks.max_wait_iterations);
+    for (int i = 0; i < iterations; ++i) {
+      DWORD current_state = 0;
+      if (callbacks.query_state(&current_state) == ERROR_SUCCESS &&
+          current_state == SERVICE_STOPPED) {
+        stopped = true;
+        break;
+      }
+      if (i + 1 < iterations && callbacks.sleep) {
+        callbacks.sleep(callbacks.poll_interval_ms);
+      }
+    }
+  }
+
+  if (!stopped) {
+    if (error_msg) *error_msg = GetSystemErrorMessage(ERROR_SERVICE_REQUEST_TIMEOUT);
+    return false;
+  }
+
+  // 3. Start service only after confirming it has stopped
+  DWORD start_err = callbacks.start_service();
+  if (start_err != ERROR_SUCCESS) {
+    if (error_msg) *error_msg = GetSystemErrorMessage(start_err);
+    return false;
+  }
+
+  return true;
+}
+
 bool ServiceManagerService::RestartServiceByName(const std::wstring& service_name, std::wstring* error_msg) {
   SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
   if (!scm) {
@@ -244,34 +290,32 @@ bool ServiceManagerService::RestartServiceByName(const std::wstring& service_nam
     return false;
   }
 
-  // 1. Stop service
-  SERVICE_STATUS status = {0};
-  ControlService(svc, SERVICE_CONTROL_STOP, &status);
-
-  // Wait for service to stop (up to 5 seconds)
-  for (int i = 0; i < 50; ++i) {
+  RestartCallbacks callbacks;
+  callbacks.stop_service = [svc]() -> DWORD {
+    SERVICE_STATUS status = {0};
+    return ControlService(svc, SERVICE_CONTROL_STOP, &status)
+               ? ERROR_SUCCESS
+               : GetLastError();
+  };
+  callbacks.query_state = [svc](DWORD* current_state) -> DWORD {
     SERVICE_STATUS_PROCESS ssp = {0};
     DWORD bytes = 0;
-    if (QueryServiceStatusEx(svc, SC_STATUS_PROCESS_INFO, reinterpret_cast<LPBYTE>(&ssp), sizeof(ssp), &bytes)) {
-      if (ssp.dwCurrentState == SERVICE_STOPPED) {
-        break;
-      }
+    if (!QueryServiceStatusEx(svc, SC_STATUS_PROCESS_INFO,
+                              reinterpret_cast<LPBYTE>(&ssp), sizeof(ssp),
+                              &bytes)) {
+      return GetLastError();
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  }
+    if (current_state) *current_state = ssp.dwCurrentState;
+    return ERROR_SUCCESS;
+  };
+  callbacks.start_service = [svc]() -> DWORD {
+    return StartServiceW(svc, 0, nullptr) ? ERROR_SUCCESS : GetLastError();
+  };
+  callbacks.sleep = [](DWORD milliseconds) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+  };
 
-  // 2. Start service
-  bool success = false;
-  if (StartServiceW(svc, 0, nullptr)) {
-    success = true;
-  } else {
-    DWORD err = GetLastError();
-    if (err == ERROR_SERVICE_ALREADY_RUNNING) {
-      success = true;
-    } else {
-      if (error_msg) *error_msg = GetSystemErrorMessage(err);
-    }
-  }
+  bool success = ExecuteServiceRestart(callbacks, error_msg);
 
   CloseServiceHandle(svc);
   CloseServiceHandle(scm);

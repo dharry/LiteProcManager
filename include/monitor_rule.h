@@ -79,6 +79,7 @@ class MonitorRule {
 
   static std::wstring GenerateId();
   static std::wstring OperatorToString(ComparisonOperator op);
+  static std::wstring OperatorToConfigString(ComparisonOperator op);
   static std::wstring MatchTypeToString(ProcessMatchType type);
   static std::wstring EventLevelToString(EventLevel level);
   static bool IsNumericColumn(ProcessColumnId id);

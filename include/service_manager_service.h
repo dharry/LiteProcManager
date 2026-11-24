@@ -8,6 +8,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -32,6 +33,18 @@ class ServiceManagerService {
   bool StopServiceByName(const std::wstring& service_name, std::wstring* error_msg = nullptr);
   bool RestartServiceByName(const std::wstring& service_name, std::wstring* error_msg = nullptr);
   bool ChangeStartupType(const std::wstring& service_name, DWORD new_start_type, std::wstring* error_msg = nullptr);
+
+  struct RestartCallbacks {
+    std::function<DWORD()> stop_service;
+    std::function<DWORD(DWORD* current_state)> query_state;
+    std::function<DWORD()> start_service;
+    std::function<void(DWORD milliseconds)> sleep;
+    int max_wait_iterations{50};
+    DWORD poll_interval_ms{100};
+  };
+
+  static bool ExecuteServiceRestart(const RestartCallbacks& callbacks,
+                                    std::wstring* error_msg = nullptr);
 
  private:
   struct CachedServiceConfig {

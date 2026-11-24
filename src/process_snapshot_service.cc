@@ -1,4 +1,4 @@
-﻿// Copyright 2026 LiteProcManager Authors. All rights reserved.
+// Copyright 2026 LiteProcManager Authors. All rights reserved.
 
 #include "process_snapshot_service.h"
 
@@ -502,7 +502,7 @@ void ProcessSnapshotService::EnrichProcessDetails(
       }
 
       // User Name
-      new_cache.user_name = QueryProcessUser(process_handle);
+      new_cache.user_name = QueryProcessUser(token_handle);
       if (new_cache.user_name.empty() || new_cache.user_name == L"-") {
         new_cache.user_name = L"SYSTEM";
       }
@@ -535,9 +535,8 @@ void ProcessSnapshotService::EnrichProcessDetails(
   item->priority = new_cache.priority;
 }
 
-std::wstring ProcessSnapshotService::QueryProcessUser(HANDLE process_handle) {
-  HANDLE token_handle = nullptr;
-  if (!OpenProcessToken(process_handle, TOKEN_QUERY, &token_handle)) {
+std::wstring ProcessSnapshotService::QueryProcessUser(HANDLE token_handle) {
+  if (!token_handle) {
     return L"-";
   }
 
@@ -568,7 +567,6 @@ std::wstring ProcessSnapshotService::QueryProcessUser(HANDLE process_handle) {
     }
   }
 
-  CloseHandle(token_handle);
   return result;
 }
 

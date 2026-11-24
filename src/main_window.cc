@@ -368,6 +368,9 @@ LRESULT CALLBACK StatusBarSubclassProc(
       }
     }
   }
+  if (msg == WM_NCDESTROY) {
+    RemoveWindowSubclass(hwnd, StatusBarSubclassProc, uIdSubclass);
+  }
   return DefSubclassProc(hwnd, msg, wparam, lparam);
 }
 
@@ -728,7 +731,7 @@ bool MainWindow::Create(HINSTANCE instance, int cmd_show) {
   wc.lpfnWndProc = WindowProc;
   wc.hInstance = instance_;
   wc.hIcon = LoadIconW(instance_, MAKEINTRESOURCEW(IDI_APP_ICON));
-  wc.hIconSm = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
+  wc.hIconSm = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR | LR_SHARED));
   wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
   wc.hbrBackground = (settings_.theme == AppTheme::kDark)
                          ? ThemeManager::GetPalette(AppTheme::kDark).window_brush
@@ -756,8 +759,8 @@ bool MainWindow::Create(HINSTANCE instance, int cmd_show) {
 
   if (!hwnd_) return false;
 
-  HICON big_icon = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR));
-  HICON sm_icon = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
+  HICON big_icon = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR | LR_SHARED));
+  HICON sm_icon = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR | LR_SHARED));
   if (big_icon) SendMessageW(hwnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(big_icon));
   if (sm_icon) SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(sm_icon));
 
@@ -1041,7 +1044,7 @@ void MainWindow::InitializeComponents() {
   notify_icon_data_.uID = 1;
   notify_icon_data_.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP;
   notify_icon_data_.uCallbackMessage = WM_APP_TRAYMSG;
-  HICON tray_icon = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
+  HICON tray_icon = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR | LR_SHARED));
   notify_icon_data_.hIcon = tray_icon ? tray_icon : icon_helper_.GetDefaultIcon();
   wcscpy_s(notify_icon_data_.szTip, L"LiteProcManager");
 
@@ -1202,8 +1205,9 @@ void MainWindow::PopulateIntervalComboBox() {
 
 void MainWindow::UpdateTimerInterval() {
   KillTimer(hwnd_, IDT_REFRESH_TIMER);
-  if (settings_.refresh_interval_seconds > 0) {
-    SetTimer(hwnd_, IDT_REFRESH_TIMER, settings_.refresh_interval_seconds * 1000, nullptr);
+  int interval = std::clamp(settings_.refresh_interval_seconds, 0, 300);
+  if (interval > 0) {
+    SetTimer(hwnd_, IDT_REFRESH_TIMER, static_cast<UINT>(interval) * 1000U, nullptr);
   }
 }
 

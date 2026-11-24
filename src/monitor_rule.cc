@@ -223,6 +223,19 @@ std::wstring MonitorRule::OperatorToString(ComparisonOperator op) {
   }
 }
 
+std::wstring MonitorRule::OperatorToConfigString(ComparisonOperator op) {
+  switch (op) {
+    case ComparisonOperator::kGreaterThan: return L">";
+    case ComparisonOperator::kGreaterThanOrEqual: return L">=";
+    case ComparisonOperator::kLessThan: return L"<";
+    case ComparisonOperator::kLessThanOrEqual: return L"<=";
+    case ComparisonOperator::kEqual: return L"==";
+    case ComparisonOperator::kNotEqual: return L"!=";
+    case ComparisonOperator::kContains: return L"Contains";
+    default: return L">=";
+  }
+}
+
 std::wstring MonitorRule::MatchTypeToString(ProcessMatchType type) {
   switch (type) {
     case ProcessMatchType::kExact: return LanguageManager::GetString(StringId::kMatchExact);
