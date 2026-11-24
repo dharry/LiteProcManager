@@ -1,4 +1,4 @@
-﻿// Copyright 2026 LiteProcManager Authors. All rights reserved.
+// Copyright 2026 LiteProcManager Authors. All rights reserved.
 
 #ifndef LITE_PROC_MANAGER_THEME_MANAGER_H_
 #define LITE_PROC_MANAGER_THEME_MANAGER_H_
@@ -13,23 +13,23 @@
 namespace lite_proc_manager {
 
 struct ColorPalette {
-  COLORREF window_background;
-  COLORREF surface_background;
-  COLORREF control_background;
-  COLORREF control_hover;
-  COLORREF text_primary;
-  COLORREF text_secondary;
-  COLORREF border_color;
-  COLORREF accent_color;
-  COLORREF accent_hover;
-  COLORREF selected_item;
-  COLORREF selected_item_text;
-  COLORREF strip_background;
-  COLORREF header_background;
-  COLORREF header_text;
-  COLORREF grid_line_color;
-  COLORREF focus_border;
-  COLORREF placeholder_text;
+  COLORREF window_background{0};
+  COLORREF surface_background{0};
+  COLORREF control_background{0};
+  COLORREF control_hover{0};
+  COLORREF text_primary{0};
+  COLORREF text_secondary{0};
+  COLORREF border_color{0};
+  COLORREF accent_color{0};
+  COLORREF accent_hover{0};
+  COLORREF selected_item{0};
+  COLORREF selected_item_text{0};
+  COLORREF strip_background{0};
+  COLORREF header_background{0};
+  COLORREF header_text{0};
+  COLORREF grid_line_color{0};
+  COLORREF focus_border{0};
+  COLORREF placeholder_text{0};
 
   HBRUSH window_brush{nullptr};
   HBRUSH surface_brush{nullptr};

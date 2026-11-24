@@ -111,8 +111,9 @@ std::vector<std::shared_ptr<ServiceItem>> ServiceManagerService::GetServicesSnap
           scm, service_status.service_name.c_str(), SERVICE_QUERY_CONFIG);
       if (svc) {
         DWORD cfg_bytes_needed = 0;
-        QueryServiceConfigW(svc, nullptr, 0, &cfg_bytes_needed);
-        if (cfg_bytes_needed > 0) {
+        if (!QueryServiceConfigW(svc, nullptr, 0, &cfg_bytes_needed) &&
+            GetLastError() == ERROR_INSUFFICIENT_BUFFER &&
+            cfg_bytes_needed >= sizeof(QUERY_SERVICE_CONFIGW)) {
           std::vector<BYTE> cfg_buf(cfg_bytes_needed);
           auto* qsc = reinterpret_cast<QUERY_SERVICE_CONFIGW*>(cfg_buf.data());
           if (QueryServiceConfigW(svc, qsc, cfg_bytes_needed, &cfg_bytes_needed)) {
@@ -123,9 +124,17 @@ std::vector<std::shared_ptr<ServiceItem>> ServiceManagerService::GetServicesSnap
           }
         }
 
+        SERVICE_DESCRIPTIONW initial_desc{};
         DWORD desc_bytes = 0;
-        QueryServiceConfig2W(svc, SERVICE_CONFIG_DESCRIPTION, nullptr, 0, &desc_bytes);
-        if (desc_bytes > 0) {
+        if (QueryServiceConfig2W(
+                svc, SERVICE_CONFIG_DESCRIPTION,
+                reinterpret_cast<LPBYTE>(&initial_desc),
+                static_cast<DWORD>(sizeof(initial_desc)), &desc_bytes)) {
+          if (initial_desc.lpDescription) {
+            config.description = initial_desc.lpDescription;
+          }
+        } else if (GetLastError() == ERROR_INSUFFICIENT_BUFFER &&
+                   desc_bytes >= sizeof(SERVICE_DESCRIPTIONW)) {
           std::vector<BYTE> desc_buf(desc_bytes);
           if (QueryServiceConfig2W(svc, SERVICE_CONFIG_DESCRIPTION, desc_buf.data(),
                                    desc_bytes, &desc_bytes)) {

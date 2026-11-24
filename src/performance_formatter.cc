@@ -169,7 +169,8 @@ CpuGridLayout PerformanceFormatter::ComputeCpuGridLayout(size_t logical_cores) {
     return {4, 4};
   }
 
-  const size_t max_int = static_cast<size_t>(std::numeric_limits<int>::max());
+  constexpr size_t max_int =
+      static_cast<size_t>(std::numeric_limits<int>::max());
   const size_t clamped_cores = std::min(logical_cores, max_int);
   int cols = static_cast<int>(
       std::ceil(std::sqrt(static_cast<double>(clamped_cores))));

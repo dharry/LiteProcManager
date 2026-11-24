@@ -63,7 +63,10 @@ void RestoreSingleInstanceLock(HANDLE mutex) {
   g_single_instance_mutex = mutex;
 }
 
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, PWSTR /*pCmdLine*/, int nCmdShow) {
+int WINAPI wWinMain(_In_ HINSTANCE hInstance,
+                    _In_opt_ HINSTANCE /*hPrevInstance*/,
+                    _In_ LPWSTR /*pCmdLine*/,
+                    _In_ int nCmdShow) {
   // Single instance control per user session
   HANDLE mutex = CreateMutexW(nullptr, TRUE, L"Local\\LiteProcManager_SingleInstance_Mutex");
   if (mutex == nullptr || GetLastError() == ERROR_ALREADY_EXISTS) {
